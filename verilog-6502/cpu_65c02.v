@@ -46,7 +46,7 @@
  * If IMPLEMENT_CORRECT_BCD_FLAGS is defined, this additional logic is added
  */
 
-// `define IMPLEMENT_CORRECT_BCD_FLAGS
+`define IMPLEMENT_CORRECT_BCD_FLAGS
 
 module cpu_65c02( clk, reset, AB, DI, DO, WE, IRQ, NMI, RDY );
 
@@ -172,6 +172,7 @@ reg adj_bcd;            // results should be BCD adjusted
 reg store_zero;         // doing STZ instruction
 reg trb_ins;            // doing TRB instruction
 reg txb_ins;            // doing TSB/TRB instruction
+reg [4:0] xmb_ins;      // doing SMB/RMB instruction
 reg bit_ins;            // doing BIT instruction
 reg bit_ins_nv;         // doing BIT instruction that will update the n and v flags (i.e. not BIT imm)
 reg plp;                // doing PLP instruction
@@ -762,7 +763,7 @@ always @*
          PULL0,
          RTS0:  BI = 8'h00;
 
-         READ:  BI = txb_ins ? (trb_ins ? ~regfile : regfile) : 8'h00;
+         READ:  BI = xmb_ins[4] ? (xmb_ins[3] ? 8'h01 << xmb_ins[2:0] : ~(8'h01 << xmb_ins[2:0])) : (txb_ins ? (trb_ins ? ~regfile : regfile) : 8'h00);
 
          BRA0:  BI = PCL;
 
@@ -841,7 +842,7 @@ always @(posedge clk)
  */
 
 always @(posedge clk)
-    if( state == WRITE)
+    if( state == WRITE && ~xmb_ins[4] )
         Z <= txb_ins ? AZ2 : AZ1;
     else if( state == RTI2 )
         Z <= DIMUX[1];
@@ -853,7 +854,7 @@ always @(posedge clk)
     end
 
 always @(posedge clk)
-    if( state == WRITE && ~txb_ins)
+    if( state == WRITE && ~txb_ins && ~xmb_ins[4] )
         N <= AN1;
     else if( state == RTI2 )
         N <= DIMUX[7];
@@ -884,7 +885,9 @@ always @(posedge clk)
  * Update D flag
  */
 always @(posedge clk )
-    if( state == RTI2 )
+    if( state == BRK3 )
+        D <= 0;
+    else if( state == RTI2 )
         D <= DIMUX[3];
     else if( state == DECODE ) begin
         if( sed ) D <= 1;
@@ -970,6 +973,7 @@ always @(posedge clk or posedge reset)
                 8'bxxx0_0001:   state <= INDX0;
                 8'bxxx1_0010:   state <= IND0;  // (ZP) odd 2 column
                 8'b000x_0100:   state <= ZP0;   // TSB/TRB
+                8'bxxxx_0111:   state <= ZP0;   // SMB/RMB
                 8'bxxx0_01xx:   state <= ZP0;
                 8'bxxx0_1001:   state <= FETCH; // IMM
                 8'bxxx0_1101:   state <= ABS0;  // even D column
@@ -1171,6 +1175,7 @@ always @(posedge clk )
         casex( IR )             // DMB: Checked for 65C02 NOP collisions
                 8'b0xxx_x110,   // ASL, ROL, LSR, ROR
                 8'b000x_x100,   // TSB/TRB
+                8'bxxxx_0111,   // SMB/RMB
                 8'b11xx_x110:   // DEC/INC
                                 write_back <= 1;
 
@@ -1262,10 +1267,12 @@ always @(posedge clk )
 always @(posedge clk )
      if( state == DECODE && RDY )
         casex( IR )
-                8'b0000_x100:   // TSB
+                8'b0000_x100,   // TSB
+                8'b1xxx_0111:   // SMB
                                 op <= OP_OR;
 
-                8'b0001_x100:   // TRB
+                8'b0001_x100,   // TRB
+                8'b0xxx_0111:   // RMB
                                 op <= OP_AND;
 
                 8'b00xx_x110,   // ROL, ASL
@@ -1327,6 +1334,15 @@ always @(posedge clk )
                                 trb_ins <= 1;
 
                 default:        trb_ins <= 0;
+        endcase
+
+always @(posedge clk )
+     if( state == DECODE && RDY )
+        casex( IR )
+                8'bxxxx_0111:   // SMB/RMB
+                                xmb_ins <= {1'b1, IR[7:4]};
+
+                default:        xmb_ins <= 5'd0;
         endcase
 
 always @(posedge clk )
