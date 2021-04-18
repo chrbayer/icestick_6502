@@ -157,6 +157,7 @@ reg shift;              // doing shift/rotate instruction
 reg rotate;             // doing rotate (no shift)
 reg backwards;          // backwards branch
 reg cond_true;          // branch condition is true
+reg bit_cond_true;      // branch condition is true in case of BBS/BBR
 reg [3:0] cond_code;    // condition code bits from instruction
 reg shift_right;        // Instruction ALU shift/rotate right
 reg alu_shift_right;    // Current cycle shift right enable
@@ -173,6 +174,7 @@ reg store_zero;         // doing STZ instruction
 reg trb_ins;            // doing TRB instruction
 reg txb_ins;            // doing TSB/TRB instruction
 reg [4:0] xmb_ins;      // doing SMB/RMB instruction
+reg [4:0] bbx_ins;      // doing BBS/BBR instruction
 reg bit_ins;            // doing BIT instruction
 reg bit_ins_nv;         // doing BIT instruction that will update the n and v flags (i.e. not BIT imm)
 reg plp;                // doing PLP instruction
@@ -394,6 +396,8 @@ always @*
 
         BRA1:           PC_inc = CO ^~ backwards;
 
+        READ:           PC_inc = bbx_ins[4] ? 1 : 0;
+
         default:        PC_inc = 0;
     endcase
 
@@ -455,8 +459,9 @@ always @*
         INDY0:          AB = { ZEROPAGE, DIMUX };
 
         REG,
-        READ,
         WRITE:          AB = { ABH, ABL };
+
+        READ:           AB = bbx_ins[4] ? PC : { ABH, ABL };
 
         default:        AB = PC;
     endcase
@@ -958,11 +963,6 @@ always @(posedge clk or posedge reset)
                 8'b0110_0000:   state <= RTS0;
                 8'b0110_1100:   state <= JMPI0;
                 8'b0111_1100:   state <= JMPIX0;
-`ifdef IMPLEMENT_NOPS
-                8'bxxxx_xx11:   state <= REG;   // (NOP1: 3/7/B/F column)
-                8'bxxx0_0010:   state <= FETCH; // (NOP2: 2 column, 4 column handled correctly below)
-                8'bx1x1_1100:   state <= ABS0;  // (NOP3: C column)
-`endif
                 8'b0x00_1000:   state <= PUSH0;
                 8'b0x10_1000:   state <= PULL0;
                 8'b0xx1_1000:   state <= REG;   // CLC, SEC, CLI, SEI
@@ -973,7 +973,7 @@ always @(posedge clk or posedge reset)
                 8'bxxx0_0001:   state <= INDX0;
                 8'bxxx1_0010:   state <= IND0;  // (ZP) odd 2 column
                 8'b000x_0100:   state <= ZP0;   // TSB/TRB
-                8'bxxxx_0111:   state <= ZP0;   // SMB/RMB
+                8'bxxxx_x111:   state <= ZP0;   // SMB/RMB/BBS/BBR
                 8'bxxx0_01xx:   state <= ZP0;
                 8'bxxx0_1001:   state <= FETCH; // IMM
                 8'bxxx0_1101:   state <= ABS0;  // even D column
@@ -990,9 +990,14 @@ always @(posedge clk or posedge reset)
                 8'bx111_1010:   state <= PULL0; // PLX/PLY
                 8'bx0xx_1010:   state <= REG;   // <shift> A, TXA, ...  NOP
                 8'bxxx0_1010:   state <= REG;   // <shift> A, TXA, ...  NOP
+`ifdef IMPLEMENT_NOPS
+                8'bxxxx_x011:   state <= REG;   // (NOP1: 3/B column)
+                8'bxxx0_0010:   state <= FETCH; // (NOP2: 2 column, 4 column handled correctly below)
+                8'bx1x1_1100:   state <= ABS0;  // (NOP3: C column)
+`endif
             endcase
 
-        ZP0     : state <= write_back ? READ : FETCH;
+        ZP0     : state <= bbx_ins[4] | write_back ? READ : FETCH;
 
         ZPX0    : state <= ZPX1;
         ZPX1    : state <= write_back ? READ : FETCH;
@@ -1020,7 +1025,7 @@ always @(posedge clk or posedge reset)
         INDY2   : state <= (CO | store) ? INDY3 : FETCH;
         INDY3   : state <= FETCH;
 
-        READ    : state <= WRITE;
+        READ    : state <= bbx_ins[4] ? BRA0 : WRITE;
         WRITE   : state <= FETCH;
         FETCH   : state <= DECODE;
 
@@ -1049,7 +1054,7 @@ always @(posedge clk or posedge reset)
         RTS2    : state <= RTS3;
         RTS3    : state <= FETCH;
 
-        BRA0    : state <= cond_true ? BRA1 : DECODE;
+        BRA0    : state <= (bbx_ins[4] & bit_cond_true) | (~bbx_ins[4] & cond_true) ? BRA1 : DECODE;
         BRA1    : state <= (CO ^ backwards) ? BRA2 : DECODE;
         BRA2    : state <= DECODE;
 
@@ -1348,6 +1353,15 @@ always @(posedge clk )
 always @(posedge clk )
      if( state == DECODE && RDY )
         casex( IR )
+                8'bxxxx_1111:   // BBS/BBR
+                                bbx_ins <= {1'b1, IR[7:4]};
+
+                default:        bbx_ins <= 5'd0;
+        endcase
+
+always @(posedge clk )
+     if( state == DECODE && RDY )
+        casex( IR )
                 8'b1001_11x0,   // STZ abs, STZ abs,x
                 8'b011x_0100:   // STZ zp, STZ zp,x
                                 store_zero <= 1;
@@ -1388,6 +1402,27 @@ always @*
             4'b1111: cond_true = Z;
             default: cond_true = 1; // BRA is 80
     endcase
+
+always @(posedge clk)
+        if ( state == READ & RDY )
+            case( bbx_ins[3:0] )
+                    4'b0000: bit_cond_true <= ~DIMUX[0];
+                    4'b0001: bit_cond_true <= ~DIMUX[1];
+                    4'b0010: bit_cond_true <= ~DIMUX[2];
+                    4'b0011: bit_cond_true <= ~DIMUX[3];
+                    4'b0100: bit_cond_true <= ~DIMUX[4];
+                    4'b0101: bit_cond_true <= ~DIMUX[5];
+                    4'b0110: bit_cond_true <= ~DIMUX[6];
+                    4'b0111: bit_cond_true <= ~DIMUX[7];
+                    4'b1000: bit_cond_true <= DIMUX[0];
+                    4'b1001: bit_cond_true <= DIMUX[1];
+                    4'b1010: bit_cond_true <= DIMUX[2];
+                    4'b1011: bit_cond_true <= DIMUX[3];
+                    4'b1100: bit_cond_true <= DIMUX[4];
+                    4'b1101: bit_cond_true <= DIMUX[5];
+                    4'b1110: bit_cond_true <= DIMUX[6];
+                    4'b1111: bit_cond_true <= DIMUX[7];
+            endcase
 
 
 reg NMI_1 = 0;          // delayed NMI signal
