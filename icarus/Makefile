@@ -2,45 +2,26 @@
 # 02-11-2019 E. Brombaugh
 
 # sources
-SOURCES = 	tb_tst_6502.v ../src/tst_6502.v ../src/acia.v \
-			../verilog-6502/ALU.v ../verilog-6502/cpu.v \
-			../osdvu/uart.v
-        
-# preparing the machine code
-ASM =	../src/rom.asm
-OBJ =	rom.obj
-RPT =	rom.rpt
-HEX =	rom.hex
+SOURCES = 	tb_soc_6502.v ../src/soc_6502.v ../src/acia.v ../src/acia_rx.v ../src/acia_tx.v \
+			../verilog-6502/alu_6502.v ../verilog-6502/cpu_65c02.v
 
 # top level
-TOP = tb_tst_6502
-			
+TOP = tb_soc_6502
+
 # Executables
 VLOG = iverilog
 WAVE = gtkwave
 TECH_LIB = /usr/local/share/yosys/ice40/cells_sim.v
-ASM6502 = acme
-HEXDUMP = hexdump
-HEXDUMP_ARGS = -v -e '1/1 "%02x " "\n"'
 
 # targets
 all: $(TOP).vcd
 
-$(OBJ): $(ASM)
-	$(ASM6502) -o $(OBJ) -r $(RPT) $<
-
-$(HEX): $(OBJ)
-	$(HEXDUMP) $(HEXDUMP_ARGS) $< > $@
-	
-wave: $(TOP).vcd $(TOP).gtkw
-	$(WAVE) $(TOP).gtkw
-	
 $(TOP).vcd: $(TOP)
+	cp ../cc65/rom.hex .
 	./$(TOP)
 
-$(TOP): $(SOURCES) $(HEX)
+$(TOP): $(SOURCES)
 	$(VLOG) -D icarus -l $(TECH_LIB) -o $(TOP) $(SOURCES)
-	
+
 clean:
-	rm -rf a.out *.obj $(HEX) $(RPT) $(TOP) $(TOP).vcd
-	
+	rm -rf $(TOP) $(TOP).vcd

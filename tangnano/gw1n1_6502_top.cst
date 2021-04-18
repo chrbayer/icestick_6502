@@ -1,0 +1,6 @@
+IO_LOC "clk" 35;
+IO_LOC "RX" 38;
+IO_LOC "TX" 39;
+IO_LOC "LED1" 16;
+IO_LOC "LED2" 17;
+IO_LOC "LED3" 18;

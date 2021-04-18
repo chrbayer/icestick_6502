@@ -1,0 +1,14 @@
+.history/
+cc65/rom
+cc65/rom.hex
+cc65/rom.map
+icarus/rom.hex
+icarus/tb_soc_6502
+icarus/tb_soc_6502.vcd
+icestorm/code.hex
+icestorm/rom.hex
+icestorm/temp.asc
+icestorm/hx8k_6502_top.asc
+icestorm/hx8k_6502_top.bin
+icestorm/hx8k_6502_top.json
+icestorm/hx8k_6502_top.rpt

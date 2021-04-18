@@ -8,6 +8,6 @@
 
 #define GPIO_DATA (*(unsigned char *) 0x1000)
 #define ACIA_CTRL (*(unsigned char *) 0x2000)
-#define ACIA_DATA (*(unsigned char *) 0x2000)
+#define ACIA_DATA (*(unsigned char *) 0x2001)
 
 #endif
