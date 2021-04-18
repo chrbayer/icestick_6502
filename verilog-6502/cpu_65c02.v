@@ -247,24 +247,25 @@ parameter
     PUSH0  = 6'd33, // PHP/PHA/PHX/PHY - send A to ALU (+0)
     PUSH1  = 6'd34, // PHP/PHA/PHX/PHY - write A/P, send S to ALU (-1)
     READ   = 6'd35, // Read memory for read/modify/write (INC, DEC, shift)
-    REG    = 6'd36, // Read register for reg-reg transfers
-    RTI0   = 6'd37, // RTI     - send S to ALU (+1)
-    RTI1   = 6'd38, // RTI     - read P from stack
-    RTI2   = 6'd39, // RTI     - read PCL from stack
-    RTI3   = 6'd40, // RTI     - read PCH from stack
-    RTI4   = 6'd41, // RTI     - read PCH from stack
-    RTS0   = 6'd42, // RTS     - send S to ALU (+1)
-    RTS1   = 6'd43, // RTS     - read PCL from stack
-    RTS2   = 6'd44, // RTS     - write PCL to ALU, read PCH
-    RTS3   = 6'd45, // RTS     - load PC and increment
-    WRITE  = 6'd46, // Write memory for read/modify/write
-    ZP0    = 6'd47, // Z-page  - fetch ZP address
-    ZPX0   = 6'd48, // ZP, X   - fetch ZP, and send to ALU (+X)
-    ZPX1   = 6'd49, // ZP, X   - load from memory
-    IND0   = 6'd50, // (ZP)    - fetch ZP address, and send to ALU (+0)
-    JMPIX0 = 6'd51, // JMP (,X)- fetch LSB and send to ALU (+X)
-    JMPIX1 = 6'd52, // JMP (,X)- fetch MSB and send to ALU (+Carry)
-    JMPIX2 = 6'd53; // JMP (,X)- Wait for ALU (only if needed)
+    RDONLY = 6'd36, // Read memory for BBS/BBR
+    REG    = 6'd37, // Read register for reg-reg transfers
+    RTI0   = 6'd38, // RTI     - send S to ALU (+1)
+    RTI1   = 6'd39, // RTI     - read P from stack
+    RTI2   = 6'd40, // RTI     - read PCL from stack
+    RTI3   = 6'd41, // RTI     - read PCH from stack
+    RTI4   = 6'd42, // RTI     - read PCH from stack
+    RTS0   = 6'd43, // RTS     - send S to ALU (+1)
+    RTS1   = 6'd44, // RTS     - read PCL from stack
+    RTS2   = 6'd45, // RTS     - write PCL to ALU, read PCH
+    RTS3   = 6'd46, // RTS     - load PC and increment
+    WRITE  = 6'd47, // Write memory for read/modify/write
+    ZP0    = 6'd48, // Z-page  - fetch ZP address
+    ZPX0   = 6'd49, // ZP, X   - fetch ZP, and send to ALU (+X)
+    ZPX1   = 6'd50, // ZP, X   - load from memory
+    IND0   = 6'd51, // (ZP)    - fetch ZP address, and send to ALU (+0)
+    JMPIX0 = 6'd52, // JMP (,X)- fetch LSB and send to ALU (+X)
+    JMPIX1 = 6'd53, // JMP (,X)- fetch MSB and send to ALU (+Carry)
+    JMPIX2 = 6'd54; // JMP (,X)- Wait for ALU (only if needed)
 
 `ifdef SIM
 
@@ -294,7 +295,8 @@ always @*
             INDY1:  statename = "INDY1";
             INDY2:  statename = "INDY2";
             INDY3:  statename = "INDY3";
-             READ:  statename = "READ";
+            READ:   statename = "READ";
+            RDONLY: statename = "RDONLY";
             WRITE:  statename = "WRITE";
             FETCH:  statename = "FETCH";
             PUSH0:  statename = "PUSH0";
@@ -396,7 +398,7 @@ always @*
 
         BRA1:           PC_inc = CO ^~ backwards;
 
-        READ:           PC_inc = bbx_ins[4] ? 1 : 0;
+        RDONLY:         PC_inc = 1;
 
         default:        PC_inc = 0;
     endcase
@@ -459,9 +461,8 @@ always @*
         INDY0:          AB = { ZEROPAGE, DIMUX };
 
         REG,
+        READ,
         WRITE:          AB = { ABH, ABL };
-
-        READ:           AB = bbx_ins[4] ? PC : { ABH, ABL };
 
         default:        AB = PC;
     endcase
@@ -997,7 +998,7 @@ always @(posedge clk or posedge reset)
 `endif
             endcase
 
-        ZP0     : state <= bbx_ins[4] | write_back ? READ : FETCH;
+        ZP0     : state <= bbx_ins[4] ? RDONLY : write_back ? READ : FETCH;
 
         ZPX0    : state <= ZPX1;
         ZPX1    : state <= write_back ? READ : FETCH;
@@ -1025,11 +1026,13 @@ always @(posedge clk or posedge reset)
         INDY2   : state <= (CO | store) ? INDY3 : FETCH;
         INDY3   : state <= FETCH;
 
-        READ    : state <= bbx_ins[4] ? BRA0 : WRITE;
+        READ    : state <= WRITE;
         WRITE   : state <= FETCH;
         FETCH   : state <= DECODE;
 
         REG     : state <= DECODE;
+
+        RDONLY  : state <= bbx_ins[4] ? BRA0 : FETCH;
 
         PUSH0   : state <= PUSH1;
         PUSH1   : state <= DECODE;
@@ -1404,7 +1407,7 @@ always @*
     endcase
 
 always @(posedge clk)
-        if ( state == READ & RDY )
+        if ( state == RDONLY & RDY )
             case( bbx_ins[3:0] )
                     4'b0000: bit_cond_true <= ~DIMUX[0];
                     4'b0001: bit_cond_true <= ~DIMUX[1];
