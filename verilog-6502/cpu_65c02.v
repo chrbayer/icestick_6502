@@ -157,8 +157,9 @@ reg shift;              // doing shift/rotate instruction
 reg rotate;             // doing rotate (no shift)
 reg backwards;          // backwards branch
 reg cond_true;          // branch condition is true
-reg bit_cond_true;      // branch condition is true in case of BBS/BBR
 reg [3:0] cond_code;    // condition code bits from instruction
+reg [3:0] bit_code;     // bit position and polarity for SMB/RMB/BBS/BBR
+reg bit_cond_true;      // branch condition is true in case of BBS/BBR
 reg shift_right;        // Instruction ALU shift/rotate right
 reg alu_shift_right;    // Current cycle shift right enable
 reg [3:0] op;           // Main ALU operation for instruction
@@ -173,8 +174,8 @@ reg adj_bcd;            // results should be BCD adjusted
 reg store_zero;         // doing STZ instruction
 reg trb_ins;            // doing TRB instruction
 reg txb_ins;            // doing TSB/TRB instruction
-reg [4:0] xmb_ins;      // doing SMB/RMB instruction
-reg [4:0] bbx_ins;      // doing BBS/BBR instruction
+reg xmb_ins;            // doing SMB/RMB instruction
+reg bbx_ins;            // doing BBS/BBR instruction
 reg bit_ins;            // doing BIT instruction
 reg bit_ins_nv;         // doing BIT instruction that will update the n and v flags (i.e. not BIT imm)
 reg plp;                // doing PLP instruction
@@ -769,7 +770,7 @@ always @*
          PULL0,
          RTS0:  BI = 8'h00;
 
-         READ:  BI = xmb_ins[4] ? (xmb_ins[3] ? 8'h01 << xmb_ins[2:0] : ~(8'h01 << xmb_ins[2:0])) : (txb_ins ? (trb_ins ? ~regfile : regfile) : 8'h00);
+         READ:  BI = xmb_ins ? (bit_code[3] ? 8'h01 << bit_code[2:0] : ~(8'h01 << bit_code[2:0])) : (txb_ins ? (trb_ins ? ~regfile : regfile) : 8'h00);
 
          BRA0:  BI = PCL;
 
@@ -848,7 +849,7 @@ always @(posedge clk)
  */
 
 always @(posedge clk)
-    if( state == WRITE && ~xmb_ins[4] )
+    if( state == WRITE && ~xmb_ins )
         Z <= txb_ins ? AZ2 : AZ1;
     else if( state == RTI2 )
         Z <= DIMUX[1];
@@ -860,7 +861,7 @@ always @(posedge clk)
     end
 
 always @(posedge clk)
-    if( state == WRITE && ~txb_ins && ~xmb_ins[4] )
+    if( state == WRITE && ~txb_ins && ~xmb_ins )
         N <= AN1;
     else if( state == RTI2 )
         N <= DIMUX[7];
@@ -998,7 +999,7 @@ always @(posedge clk or posedge reset)
 `endif
             endcase
 
-        ZP0     : state <= bbx_ins[4] ? RDONLY : write_back ? READ : FETCH;
+        ZP0     : state <= bbx_ins ? RDONLY : write_back ? READ : FETCH;
 
         ZPX0    : state <= ZPX1;
         ZPX1    : state <= write_back ? READ : FETCH;
@@ -1032,7 +1033,7 @@ always @(posedge clk or posedge reset)
 
         REG     : state <= DECODE;
 
-        RDONLY  : state <= bbx_ins[4] ? BRA0 : FETCH;
+        RDONLY  : state <= bbx_ins ? BRA0 : FETCH;
 
         PUSH0   : state <= PUSH1;
         PUSH1   : state <= DECODE;
@@ -1057,7 +1058,7 @@ always @(posedge clk or posedge reset)
         RTS2    : state <= RTS3;
         RTS3    : state <= FETCH;
 
-        BRA0    : state <= (bbx_ins[4] & bit_cond_true) | (~bbx_ins[4] & cond_true) ? BRA1 : DECODE;
+        BRA0    : state <= (bbx_ins & bit_cond_true) | (~bbx_ins & cond_true) ? BRA1 : DECODE;
         BRA1    : state <= (CO ^ backwards) ? BRA2 : DECODE;
         BRA2    : state <= DECODE;
 
@@ -1348,18 +1349,12 @@ always @(posedge clk )
      if( state == DECODE && RDY )
         casex( IR )
                 8'bxxxx_0111:   // SMB/RMB
-                                xmb_ins <= {1'b1, IR[7:4]};
+                                {xmb_ins, bbx_ins, bit_code} <= {1'b1, 1'b0, IR[7:4]};
 
-                default:        xmb_ins <= 5'd0;
-        endcase
-
-always @(posedge clk )
-     if( state == DECODE && RDY )
-        casex( IR )
                 8'bxxxx_1111:   // BBS/BBR
-                                bbx_ins <= {1'b1, IR[7:4]};
+                                {xmb_ins, bbx_ins, bit_code} <= {1'b0, 1'b1, IR[7:4]};
 
-                default:        bbx_ins <= 5'd0;
+                default:        {xmb_ins, bbx_ins, bit_code} <= 6'd0;
         endcase
 
 always @(posedge clk )
@@ -1408,7 +1403,7 @@ always @*
 
 always @(posedge clk)
         if ( state == RDONLY & RDY )
-            case( bbx_ins[3:0] )
+            case( bit_code[3:0] )
                     4'b0000: bit_cond_true <= ~DIMUX[0];
                     4'b0001: bit_cond_true <= ~DIMUX[1];
                     4'b0010: bit_cond_true <= ~DIMUX[2];

@@ -6,8 +6,8 @@
  * Use at your own risk.
  *
  * Given input frequency:       100.000 MHz
- * Requested output frequency:   32.000 MHz
- * Achieved output frequency:    32.031 MHz
+ * Requested output frequency:   44.000 MHz
+ * Achieved output frequency:    43.750 MHz
  */
 
 module pll(
@@ -18,10 +18,10 @@ module pll(
 
 SB_PLL40_CORE #(
 		.FEEDBACK_PATH("SIMPLE"),
-		.DIVR(4'b0011),		// DIVR =  3
-		.DIVF(7'b0101000),	// DIVF = 40
-		.DIVQ(3'b101),		// DIVQ =  5
-		.FILTER_RANGE(3'b010)	// FILTER_RANGE = 2
+		.DIVR(4'b0000),		// DIVR =  0
+		.DIVF(7'b0000110),	// DIVF =  6
+		.DIVQ(3'b100),		// DIVQ =  4
+		.FILTER_RANGE(3'b101)	// FILTER_RANGE = 5
 	) uut (
 		.LOCK(locked),
 		.RESETB(1'b1),
