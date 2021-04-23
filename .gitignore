@@ -5,6 +5,7 @@ cc65/rom.map
 icarus/rom.hex
 icarus/tb_soc_6502
 icarus/tb_soc_6502.vcd
+icarus/tb_soc_6502.lxt
 icestorm/code.hex
 icestorm/rom.hex
 icestorm/temp.asc

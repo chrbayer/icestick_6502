@@ -36,6 +36,10 @@ module soc_6502(
 
 	// RAM @ pages 00-0f
 	reg [7:0] ram_mem [0:4095];
+`ifdef VERIFICATION
+	initial
+        $readmemb("null.hex",ram_mem);
+`endif
 	reg [7:0] ram_do;
 	always @(posedge clk)
 		if((CPU_WE == 1'b1) && (p0 == 1'b1))
@@ -67,12 +71,39 @@ module soc_6502(
 	);
 
 	// ROM @ pages f0,f1...
-    reg [7:0] rom_mem [0:4095];
 	reg [7:0] rom_do;
+`ifdef VERIFICATION
+    reg [7:0] rom_mem [0:16383];
 	initial
-        $readmemh("rom.hex",rom_mem);
+`ifdef VERIFICATION_6502
+        $readmemh("6502_verification.hex", rom_mem);
+`endif
+`ifdef VERIFICATION_65C02
+        $readmemh("65C02_verification.hex", rom_mem);
+`endif
+`ifdef DECIMAL_TEST_65C02
+        $readmemh("65C02_decimal_test.hex", rom_mem);
+`endif
+	always @(posedge clk)
+		rom_do <= rom_mem[CPU_AB[13:0]];
+	initial
+`ifdef VERIFICATION_6502
+		$monitor("test_case = %0h", ram_mem[512]);
+`endif
+`ifdef VERIFICATION_65C02
+		$monitor("test_case = %0h", ram_mem[512]);
+`endif
+`ifdef DECIMAL_TEST_65C02
+		$monitor("ERROR = %0h", ram_mem[11]);
+`endif
+`else
+    reg [7:0] rom_mem [0:4095];
+	initial
+        $readmemh("rom.hex", rom_mem);
 	always @(posedge clk)
 		rom_do <= rom_mem[CPU_AB[11:0]];
+`endif
+
 
 	// data mux
 	reg [3:0] mux_sel;

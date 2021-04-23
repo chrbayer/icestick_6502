@@ -16,9 +16,9 @@ module tb_soc_6502;
     // reset
     initial
     begin
-`ifdef icarus
-  		$dumpfile("tb_soc_6502.vcd");
-		$dumpvars;
+`ifndef VERIFICATION
+  		$dumpfile("tb_soc_6502.lxt");
+		$dumpvars/*(1, uut)*/;
 `endif
 
         // init regs
@@ -29,7 +29,7 @@ module tb_soc_6502;
         #10
         reset = 1'b0;
 
-`ifdef icarus
+`ifndef VERIFICATION
         // stop after 1 sec
 		#100000 $finish;
 `endif
