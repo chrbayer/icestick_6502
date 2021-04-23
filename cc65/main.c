@@ -14,12 +14,8 @@ unsigned char x = 0;
 char txt_buf[32];
 unsigned long i;
 
-extern unsigned char test_instructions(void);
-
 int main()
 {
-	(void)test_instructions();
-
 	// Send startup message
 	acia_tx_str("\n\n\rIcestick 6502 cc65 serial test\n\n\r");
 
@@ -44,7 +40,7 @@ int main()
 		}
 
         // write counter msbyte to GPIO
-        GPIO_DATA = (x & 0x80) | (test_instructions() << 6);
+        GPIO_DATA = (x & 0xC0);
         x++;
     }
 
