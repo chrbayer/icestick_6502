@@ -16,7 +16,7 @@ module soc_6502(
     reg [7:0] CPU_DI;
     wire [7:0] CPU_DO;
     wire CPU_WE, CPU_IRQ;
-    cpu_65c02 ucpu(
+    cpu_65ce02 ucpu(
         .clk(clk),
         .reset(reset),
         .AB(CPU_AB),

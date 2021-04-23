@@ -7,7 +7,7 @@
 #VPATH = ../src/ ../verilog-6502/ ../osvdu/
 
 SRC =	hx8k_6502_top.v pll.v ../src/soc_6502.v ../src/acia.v \
-		../verilog-6502/cpu_65c02.v ../verilog-6502/alu_6502.v \
+		../verilog-6502/cpu_65ce02.v ../verilog-6502/alu_6502.v \
 		../src/acia_rx.v ../src/acia_tx.v
 
 # preparing the machine code
