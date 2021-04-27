@@ -168,7 +168,9 @@ reg [3:0] cond_code;    // condition code bits from instruction
 reg [3:0] bit_code;     // bit position and polarity for SMB/RMB/BBS/BBR
 reg bit_cond_true;      // branch condition is true in case of BBS/BBR
 reg shift_right;        // Instruction ALU shift/rotate right
+reg arith_shift;        // Instruction ALU shift arithmetic right
 reg alu_shift_right;    // Current cycle shift right enable
+reg alu_arith_shift;    // Current cycle arithmetic shift right enable
 reg [3:0] op;           // Main ALU operation for instruction
 reg [3:0] alu_op;       // Current cycle ALU operation
 reg adc_bcd;            // ALU should do BCD style carry
@@ -647,9 +649,10 @@ always @*
  * ALU
  */
 
-alu_6502 ualu( .clk(clk),
+alu_65ce02 ualu( .clk(clk),
          .op(alu_op),
          .right(alu_shift_right),
+         .arith(alu_arith_shift),
          .AI(AI),
          .BI(BI),
          .CI(CI),
@@ -694,9 +697,9 @@ always @*
 
 always @*
     if( state == FETCH || state == REG || state == READ )
-        alu_shift_right = shift_right;
+        { alu_shift_right, alu_arith_shift } = { shift_right, arith_shift };
     else
-        alu_shift_right = 0;
+        { alu_shift_right, alu_arith_shift } = 2'b00;
 
 /*
  * Sign extend branch offset.
@@ -1017,7 +1020,7 @@ always @(posedge clk or posedge reset)
                 8'bx0xx_1010:   state <= REG;   // <shift> A, TXA, ...
                 8'bxxx0_1010:   state <= REG;   // <shift> A, TXA, DEX, ...  NOP
                 8'b0xxx_1011:   state <= REG;   // TSY, DEZ, ...
-                8'b0100_0010:   state <= REG;   // NEG
+                8'b0100_001x:   state <= REG;   // NEG, ASR
 `ifdef IMPLEMENT_NOPS
                 8'bxxxx_x011:   state <= REG;   // (NOP1: 3/B column)
                 8'bxxx0_0010:   state <= FETCH; // (NOP2: 2 column, 4 column handled correctly below)
@@ -1127,7 +1130,7 @@ always @(posedge clk)
                 8'bxxx0_1000,   // PHP, PLP, PHA, PLA, DEY, TAY, INY, INX
                 8'b0xxx_1011,   // TSY, INZ, TYS, DEZ, TAZ, TAB, TZA, TBA
                 8'b101x_1011,   // LDZ
-                8'b0100_0010:   // NEG
+                8'b0100_001x:   // NEG, ASR
                                 load_reg <= 1;
 
                 default:        load_reg <= 0;
@@ -1254,7 +1257,8 @@ always @(posedge clk )
                 8'b0xxx_x110,   // ASL, ROL, LSR, ROR
                 8'b000x_x100,   // TSB/TRB
                 8'bxxxx_0111,   // SMB/RMB
-                8'b11xx_x110:   // DEC/INC
+                8'b11xx_x110,   // DEC/INC
+                8'b010x_0100:   // ASR
                                 write_back <= 1;
 
                 default:        write_back <= 0;
@@ -1308,7 +1312,9 @@ always @(posedge clk )
      if( state == DECODE && RDY )
         casex( IR )
                 8'b0xxx_x110,   // ASL, ROL, LSR, ROR (abs, absx, zpg, zpgx)
-                8'b0xx0_1010:   // ASL, ROL, LSR, ROR (acc)
+                8'b0xx0_1010,   // ASL, ROL, LSR, ROR (acc)
+                8'b010x_0100,   // ASR
+                8'b0100_0011:   // ASR
                                 shift <= 1;
 
                 default:        shift <= 0;
@@ -1331,10 +1337,22 @@ always @(posedge clk )
      if( state == DECODE && RDY )
         casex( IR )
                 8'b01xx_x110,   // ROR, LSR
-                8'b01x0_1x10:   // ROR, LSR
+                8'b01x0_1x10,   // ROR, LSR
+                8'b010x_0100,   // ASR
+                8'b0100_0011:   // ASR
                                 shift_right <= 1;
 
                 default:        shift_right <= 0;
+        endcase
+
+always @(posedge clk )
+     if( state == DECODE && RDY )
+        casex( IR )
+                8'b010x_0100,   // ASR
+                8'b0100_0011:   // ASR
+                                arith_shift <= 1;
+
+                default:        arith_shift <= 0;
         endcase
 
 always @(posedge clk )
@@ -1365,7 +1383,9 @@ always @(posedge clk )
                                 op <= OP_ROL;
 
                 8'b01xx_x110,   // ROR, LSR
-                8'b01xx_1x10:   // ROR, LSR
+                8'b01xx_1x10,   // ROR, LSR
+                8'b010x_0100,   // ASR
+                8'b0100_0011:   // ASR
                                 op <= OP_A;
 
                 8'b11x1_0010,   // CMP, SBC (zp)
