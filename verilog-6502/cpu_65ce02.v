@@ -162,6 +162,7 @@ reg adc_sbc;            // doing ADC/SBC
 reg compare;            // doing CMP/CPY/CPX
 reg shift;              // doing shift/rotate instruction
 reg rotate;             // doing rotate (no shift)
+reg negate;             // doing negate
 reg backwards;          // backwards branch
 reg cond_true;          // branch condition is true
 reg [3:0] cond_code;    // condition code bits from instruction
@@ -717,7 +718,8 @@ always @*
         BRK2,
         INDX1:  AI = ADD;
 
-        REG,
+        REG:    AI = negate ? 8'h00 : regfile;
+
         ZPX0,
         INDX0,
         JMPIX0,
@@ -758,7 +760,6 @@ always @*
          RTI1,
          RTI2,
          INDX1,
-         REG,
          JSR0,
          JSR1,
          JSR2,
@@ -769,6 +770,8 @@ always @*
          PUSH1,
          PULL0,
          RTS0:  BI = 8'h00;
+
+         REG:   BI = negate ? regfile : 8'h00;
 
          READ:  BI = xmb_ins ? (bit_code[3] ? 8'h01 << bit_code[2:0] : ~(8'h01 << bit_code[2:0])) : (txb_ins ? (trb_ins ? ~regfile : regfile) : 8'h00);
 
@@ -1011,6 +1014,7 @@ always @(posedge clk or posedge reset)
                 8'bx0xx_1010:   state <= REG;   // <shift> A, TXA, ...
                 8'bxxx0_1010:   state <= REG;   // <shift> A, TXA, DEX, ...  NOP
                 8'b0xxx_1011:   state <= REG;   // TSY, DEZ, ...
+                8'b0100_0010:   state <= REG;   // NEG
 `ifdef IMPLEMENT_NOPS
                 8'bxxxx_x011:   state <= REG;   // (NOP1: 3/B column)
                 8'bxxx0_0010:   state <= FETCH; // (NOP2: 2 column, 4 column handled correctly below)
@@ -1104,7 +1108,7 @@ always @(posedge clk)
 
 always @(posedge clk)
      if( state == DECODE && RDY )
-        casex( IR )             // DMB: Checked for 65C02 NOP collisions
+        casex( IR )
                 8'b0xx1_0010,   // ORA, AND, EOR, ADC (zp)
                 8'b1x11_0010,   // LDA, SBC (zp)
                 8'b0xxx_1010,   // ASLA, INCA, ROLA, DECA, LSRA, PHY, RORA, PLY
@@ -1119,7 +1123,8 @@ always @(posedge clk)
                 8'b1x1x_xx01,   // LDA, SBC
                 8'bxxx0_1000,   // PHP, PLP, PHA, PLA, DEY, TAY, INY, INX
                 8'b0xxx_1011,   // TSY, INZ, TYS, DEZ, TAZ, TAB, TZA, TBA
-                8'b101x_1011:   // LDZ
+                8'b101x_1011,   // LDZ
+                8'b0100_0010:   // NEG
                                 load_reg <= 1;
 
                 default:        load_reg <= 0;
@@ -1269,7 +1274,8 @@ always @(posedge clk )
                 8'b0001_1010,   // INCA
                 8'b111x_x110,   // INC
                 8'b11x0_1000,   // INX, INY
-                8'b0001_1011:   // INZ
+                8'b0001_1011,   // INZ
+                8'b0100_0010:   // NEG
                                 inc <= 1;
 
                 default:        inc <= 0;
@@ -1341,6 +1347,15 @@ always @(posedge clk )
 always @(posedge clk )
      if( state == DECODE && RDY )
         casex( IR )
+                8'b0100_0010:   // NEG A
+                                negate <= 1;
+
+                default:        negate <= 0;
+        endcase
+
+always @(posedge clk )
+     if( state == DECODE && RDY )
+        casex( IR )
                 8'b0000_x100,   // TSB
                 8'b1xxx_0111:   // SMB
                                 op <= OP_OR;
@@ -1368,9 +1383,9 @@ always @(posedge clk )
                 8'b11x0_0x00,   // CPX, CPY (imm, zpg)
                 8'b11x0_1100,   // CPY, CPY
                 8'b1101_x100,   // CPZ
-                8'b1100_0010:   // CPZ
-
-                   op <= OP_SUB;
+                8'b1100_0010,   // CPZ
+                8'b0100_0010:   // NEG
+                                op <= OP_SUB;
 
                 8'b00x1_0010,   // ORA, AND (zp)
                 8'b0x01_0010,   // ORA, EOR (zp)
