@@ -162,7 +162,6 @@ reg adc_sbc;            // doing ADC/SBC
 reg compare;            // doing CMP/CPY/CPX
 reg shift;              // doing shift/rotate instruction
 reg rotate;             // doing rotate (no shift)
-reg negate;             // doing negate
 reg backwards;          // backwards branch
 reg cond_true;          // branch condition is true
 reg [3:0] cond_code;    // condition code bits from instruction
@@ -183,6 +182,9 @@ reg trb_ins;            // doing TRB instruction
 reg txb_ins;            // doing TSB/TRB instruction
 reg xmb_ins;            // doing SMB/RMB instruction
 reg bbx_ins;            // doing BBS/BBR instruction
+reg negate;             // doing NEG
+reg ind_jsr;            // doing an indirect jump to subroutine IND and IND, X
+reg ind_x_jsr;          // doing an indirect jump with X register offset to subroutine IND, X
 reg bit_ins;            // doing BIT instruction
 reg bit_ins_nv;         // doing BIT instruction that will update the n and v flags (i.e. not BIT imm)
 reg plp;                // doing PLP instruction
@@ -971,6 +973,7 @@ always @(posedge clk or posedge reset)
                 // TODO Review for simplifications as in verilog the first matching case has priority
                 8'b0000_0000:   state <= BRK0;
                 8'b0010_0000:   state <= JSR0;
+                8'b0010_001x:   state <= JSR0;
                 8'b0010_1100:   state <= ABS0;  // BIT abs
                 8'b1x01_1100:   state <= ABS0;  // STZ abs, CPZ abs
                 8'b000x_1100:   state <= ABS0;  // TSB/TRB
@@ -1065,7 +1068,7 @@ always @(posedge clk or posedge reset)
 
         JSR0    : state <= JSR1;
         JSR1    : state <= JSR2;
-        JSR2    : state <= JSR3;
+        JSR2    : state <= ind_jsr ? (ind_x_jsr ? JMPIX1 : JMPI1) : JSR3;
         JSR3    : state <= FETCH;
 
         RTI0    : state <= RTI1;
@@ -1347,15 +1350,6 @@ always @(posedge clk )
 always @(posedge clk )
      if( state == DECODE && RDY )
         casex( IR )
-                8'b0100_0010:   // NEG A
-                                negate <= 1;
-
-                default:        negate <= 0;
-        endcase
-
-always @(posedge clk )
-     if( state == DECODE && RDY )
-        casex( IR )
                 8'b0000_x100,   // TSB
                 8'b1xxx_0111:   // SMB
                                 op <= OP_OR;
@@ -1437,6 +1431,27 @@ always @(posedge clk )
                                 {xmb_ins, bbx_ins, bit_code} <= {1'b0, 1'b1, IR[7:4]};
 
                 default:        {xmb_ins, bbx_ins, bit_code} <= 6'd0;
+        endcase
+
+always @(posedge clk )
+     if( state == DECODE && RDY )
+        casex( IR )
+                8'b0100_0010:   // NEG A
+                                negate <= 1;
+
+                default:        negate <= 0;
+        endcase
+
+always @(posedge clk )
+     if( state == DECODE && RDY )
+        casex( IR )
+                8'b0010_0010:   // JSR IND
+                                { ind_jsr, ind_x_jsr } <= 2'b10;
+
+                8'b0010_0011:   // JSR IND, X
+                                { ind_jsr, ind_x_jsr } <= 2'b11;
+
+                default:        { ind_jsr, ind_x_jsr } <= 2'b00;
         endcase
 
 /*
