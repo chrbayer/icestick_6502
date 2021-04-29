@@ -95,15 +95,35 @@ end
 // calculate the flags
 always @(posedge clk)
     if( RDY ) begin
-	AI7 <= AI[7];
-	BI7 <= temp_BI[7];
-	OUT <= temp[7:0];
-	CO  <= temp[8] | CO9;
-	N   <= temp[7];
-	HC  <= temp_HC;
+		AI7 <= AI[7];
+		BI7 <= temp_BI[7];
+		OUT <= temp[7:0];
+		CO  <= temp[8] | CO9;
+		N   <= temp[7];
+		HC  <= temp_HC;
     end
 
 assign V = AI7 ^ BI7 ^ CO ^ N;
 assign Z = ~|OUT;
+
+endmodule
+
+module alu_65ce02_addr( clk, AI, BI, OUT, RDY );
+	input clk;
+	input [15:0] AI;
+	input [15:0] BI;
+	output [15:0] OUT;
+	input RDY;
+
+reg [15:0] OUT;
+reg [15:0] temp;
+
+always @*
+	temp[15:0] = AI[15:0] + BI[15:0];
+
+always @(posedge clk)
+    if( RDY ) begin
+		OUT[15:0] <= temp[15:0];
+    end
 
 endmodule

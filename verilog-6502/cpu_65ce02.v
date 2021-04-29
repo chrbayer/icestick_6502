@@ -68,6 +68,7 @@ reg  [15:0] PC;         // Program Counter
 reg  [7:0] ABL;         // Address Bus Register LSB
 reg  [7:0] ABH;         // Address Bus Register MSB
 wire [7:0] ADD;         // Adder Hold Register (registered in ALU)
+wire [15:0] ADD16;      // 16 bit Adder Hold Register (registered in 16 bit ALU)
 
 reg  [7:0] DIHOLD;      // Hold for Data In
 reg  DIHOLD_valid;      //
@@ -94,6 +95,8 @@ wire HC;                // ALU half carry
 
 reg  [7:0] AI;          // ALU Input A
 reg  [7:0] BI;          // ALU Input B
+reg  [15:0] AI16;       // 16 bit ALU Input A
+reg  [15:0] BI16;       // 16 bit ALU Input B
 wire [7:0] DI;          // Data In
 wire [7:0] IR;          // Instruction register
 reg  [7:0] DO;          // Data Out
@@ -162,7 +165,6 @@ reg adc_sbc;            // doing ADC/SBC
 reg compare;            // doing CMP/CPY/CPX
 reg shift;              // doing shift/rotate instruction
 reg rotate;             // doing rotate (no shift)
-reg backwards;          // backwards branch
 reg cond_true;          // branch condition is true
 reg [3:0] cond_code;    // condition code bits from instruction
 reg [3:0] bit_code;     // bit position and polarity for SMB/RMB/BBS/BBR
@@ -228,9 +230,8 @@ parameter
     ABSX0  = 6'd2,  // ABS, X  - fetch LSB and send to ALU (+X)
     ABSX1  = 6'd3,  // ABS, X  - fetch MSB and send to ALU (+Carry)
     ABSX2  = 6'd4,  // ABS, X  - Wait for ALU (only if needed)
-    BRA0   = 6'd5,  // Branch  - fetch offset and send to ALU (+PC[7:0])
-    BRA1   = 6'd6,  // Branch  - fetch opcode, and send PC[15:8] to ALU
-    BRA2   = 6'd7,  // Branch  - fetch opcode (if page boundary crossed)
+    BRA0   = 6'd5,  // Branch  - fetch offset and send to 16 bit ALU
+    BRA1   = 6'd6,  // Branch  - fetch opcode
     BRK0   = 6'd8,  // BRK/IRQ - push PCH, send S to ALU (-1)
     BRK1   = 6'd9,  // BRK/IRQ - push PCL, send S to ALU (-1)
     BRK2   = 6'd10, // BRK/IRQ - push P, send S to ALU (-1)
@@ -333,7 +334,6 @@ always @*
             BRK3:   statename = "BRK3";
             BRA0:   statename = "BRA0";
             BRA1:   statename = "BRA1";
-            BRA2:   statename = "BRA2";
             JMP0:   statename = "JMP0";
             JMP1:   statename = "JMP1";
             JMPI0:  statename = "JMPI0";
@@ -370,10 +370,9 @@ always @*
         RTS3,
         RTI4:           PC_temp = { DIMUX, ADD };
 
-        BRA1:           PC_temp = { ABH, ADD };
+        BRA1:           PC_temp = ADD16;
 
-        JMPIX2,
-        BRA2:           PC_temp = { ADD, PCL };
+        JMPIX2:         PC_temp = { ADD, PCL };
 
         BRK2:           PC_temp =      res ? 16'hfffc :
                                   NMI_edge ? 16'hfffa : 16'hfffe;
@@ -396,8 +395,9 @@ always @*
         JMPIX2,
         ABSX0,
         FETCH,
+        RDONLY,
         BRA0,
-        BRA2,
+        BRA1,
         BRK3,
         JMPI1,
         JMP1,
@@ -405,10 +405,6 @@ always @*
         RTS3:           PC_inc = 1;
 
         JMPIX1:         PC_inc = ~CO;       // Don't increment PC if we are going to go through JMPIX2
-
-        BRA1:           PC_inc = CO ^~ backwards;
-
-        RDONLY:         PC_inc = 1;
 
         default:        PC_inc = 0;
     endcase
@@ -435,12 +431,11 @@ always @*
         RTI4,
         ABS1:           AB = { DIMUX, ADD };
 
-        BRA2,
         INDY3,
         JMPIX2,
         ABSX2:          AB = { ADD, ABL };
 
-        BRA1:           AB = { ABH, ADD };
+        BRA1:           AB = ADD16;
 
         JSR0,
         PUSH1,
@@ -646,7 +641,7 @@ always @*
     endcase
 
 /*
- * ALU
+ * ALUs
  */
 
 alu_65ce02 ualu( .clk(clk),
@@ -665,6 +660,12 @@ alu_65ce02 ualu( .clk(clk),
          .HC(HC),
          .RDY(RDY) );
 
+alu_65ce02_addr ualu_addr( .clk(clk),
+         .AI(AI16),
+         .BI(BI16),
+         .OUT(ADD16),
+         .RDY(RDY) );
+
 /*
  * Select current ALU operation
  */
@@ -672,8 +673,6 @@ alu_65ce02 ualu( .clk(clk),
 always @*
     case( state )
         READ:   alu_op = op;
-
-        BRA1:   alu_op = backwards ? OP_SUB : OP_ADD;
 
         FETCH,
         REG :   alu_op = op;
@@ -700,14 +699,6 @@ always @*
         { alu_shift_right, alu_arith_shift } = { shift_right, arith_shift };
     else
         { alu_shift_right, alu_arith_shift } = 2'b00;
-
-/*
- * Sign extend branch offset.
- */
-
-always @(posedge clk)
-    if( RDY )
-        backwards <= DIMUX[7];
 
 /*
  * ALU A Input MUX
@@ -739,10 +730,7 @@ always @*
         PUSH0,
         PUSH1:  AI = regfile;
 
-        BRA0,
         READ:   AI = DIMUX;
-
-        BRA1:   AI = ABH;       // don't use PCH in case we're
 
         FETCH:  AI = load_only ? 0 : regfile;
 
@@ -752,6 +740,12 @@ always @*
         default:  AI = 0;
     endcase
 
+always @*
+    case( state )
+        BRA0:   AI16 = { DIMUX[7] ? 8'hff : 8'h00, DIMUX };
+
+        default:  AI16 = 0;
+    endcase
 
 /*
  * ALU B Input mux
@@ -759,7 +753,6 @@ always @*
 
 always @*
     case( state )
-         BRA1,
          RTS1,
          RTI0,
          RTI1,
@@ -780,12 +773,17 @@ always @*
 
          READ:  BI = xmb_ins ? (bit_code[3] ? 8'h01 << bit_code[2:0] : ~(8'h01 << bit_code[2:0])) : (txb_ins ? (trb_ins ? ~regfile : regfile) : 8'h00);
 
-         BRA0:  BI = PCL;
-
          DECODE,
          ABS1:  BI = 8'hxx;
 
          default:       BI = DIMUX;
+    endcase
+
+always @*
+    case( state )
+         BRA0:  BI16 = PC;
+
+         default:       BI16 = 0;
     endcase
 
 /*
@@ -795,7 +793,6 @@ always @*
 always @*
     case( state )
         INDY2,
-        BRA1,
         JMPIX1,
         ABSX1:  CI = CO;
 
@@ -1086,8 +1083,7 @@ always @(posedge clk or posedge reset)
         RTS3    : state <= FETCH;
 
         BRA0    : state <= (bbx_ins & bit_cond_true) | (~bbx_ins & cond_true) ? BRA1 : DECODE;
-        BRA1    : state <= (CO ^ backwards) ? BRA2 : DECODE;
-        BRA2    : state <= DECODE;
+        BRA1    : state <= DECODE;
 
         JMP0    : state <= JMP1;
         JMP1    : state <= DECODE;
