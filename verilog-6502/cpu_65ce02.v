@@ -241,14 +241,14 @@ parameter
     BRK3   = 6'd11, // BRK/IRQ - write S, and fetch @ fffe
     DECODE = 6'd12, // IR is valid, decode instruction, and write prev reg
     FETCH  = 6'd13, // fetch next opcode, and perform prev ALU op
-    INDX0  = 6'd14, // (ZP,X)  - fetch ZP address, and send to ALU (+X)
-    INDX1  = 6'd15, // (ZP,X)  - fetch LSB at ZP+X, calculate ZP+X+1
-    INDX2  = 6'd16, // (ZP,X)  - fetch MSB at ZP+X+1
-    INDX3  = 6'd17, // (ZP,X)  - fetch data
-    INDY0  = 6'd18, // (ZP),Y/Z  - fetch ZP address, and send ZP to ALU (+1)
-    INDY1  = 6'd19, // (ZP),Y/Z  - fetch at ZP+1, and send LSB to ALU (+Y)
-    INDY2  = 6'd20, // (ZP),Y/Z  - fetch data, and send MSB to ALU (+Carry)
-    INDY3  = 6'd21, // (ZP),Y/Z  - fetch data (if page boundary crossed)
+    INDX0  = 6'd14, // (BP,X)  - fetch BP address, and send to ALU (+X)
+    INDX1  = 6'd15, // (BP,X)  - fetch LSB at BP+X, calculate BP+X+1
+    INDX2  = 6'd16, // (BP,X)  - fetch MSB at BP+X+1
+    INDX3  = 6'd17, // (BP,X)  - fetch data
+    INDY0  = 6'd18, // (BP),Y/Z  - fetch BP address, and send BP to ALU (+1)
+    INDY1  = 6'd19, // (BP),Y/Z  - fetch at BP+1, and send LSB to ALU (+Y)
+    INDY2  = 6'd20, // (BP),Y/Z  - fetch data, and send MSB to ALU (+Carry)
+    INDY3  = 6'd21, // (BP),Y/Z  - fetch data (if page boundary crossed)
     JMP0   = 6'd22, // JMP     - fetch PCL and hold
     JMP1   = 6'd23, // JMP     - fetch PCH
     JMPI0  = 6'd24, // JMP IND - fetch LSB and send to ALU for delay (+0)
@@ -275,9 +275,9 @@ parameter
     RTS2   = 6'd45, // RTS     - write PCL to ALU, read PCH
     RTS3   = 6'd46, // RTS     - load PC and increment
     WRITE  = 6'd47, // Write memory for read/modify/write
-    ZP0    = 6'd48, // Z-page  - fetch ZP address
-    ZPX0   = 6'd49, // ZP, X   - fetch ZP, and send to ALU (+X)
-    ZPX1   = 6'd50, // ZP, X   - load from memory
+    BP0    = 6'd48, // Z-page  - fetch BP address
+    BPX0   = 6'd49, // BP, X   - fetch BP, and send to ALU (+X)
+    BPX1   = 6'd50, // BP, X   - load from memory
     JMPIX0 = 6'd51, // JMP (,X)- fetch LSB and send to ALU (+X)
     JMPIX1 = 6'd52, // JMP (,X)- fetch MSB and send to ALU (+Carry)
     JMPIX2 = 6'd53; // JMP (,X)- Wait for ALU (only if needed)
@@ -293,9 +293,9 @@ always @*
     case( state )
             DECODE: statename = "DECODE";
             REG:    statename = "REG";
-            ZP0:    statename = "ZP0";
-            ZPX0:   statename = "ZPX0";
-            ZPX1:   statename = "ZPX1";
+            BP0:    statename = "BP0";
+            BPX0:   statename = "BPX0";
+            BPX1:   statename = "BPX1";
             ABS0:   statename = "ABS0";
             ABS1:   statename = "ABS1";
             ABSX0:  statename = "ABSX0";
@@ -460,10 +460,10 @@ always @*
 
         INDY1,
         INDX1,
-        ZPX1,
+        BPX1,
         INDX2:          AB = { B, ADD };
 
-        ZP0,
+        BP0,
         INDY0:          AB = { B, DIMUX };
 
         REG,
@@ -524,8 +524,8 @@ always @*
         INDY3,
         ABSX2,
         ABS1,
-        ZPX1,
-        ZP0:     WE = store;
+        BPX1,
+        BP0:     WE = store;
 
         default: WE = 0;
     endcase
@@ -625,7 +625,7 @@ always @*
     case( state )
         INDY1,
         INDX0,
-        ZPX0,
+        BPX0,
         JMPIX0,
         ABSX0  : regsel = index_sel;
 
@@ -723,7 +723,7 @@ always @*
 
         REG:    AI = neg ? 8'h00 : regfile;
 
-        ZPX0,
+        BPX0,
         INDX0,
         JMPIX0,
         ABSX0,
@@ -1008,10 +1008,10 @@ always @(posedge clk or posedge reset)
                 8'b1010_1011:   state <= ABS0;  // Z abs
                 8'b1xxx_1000:   state <= REG;   // DEY, TYA, ...
                 8'bxxx0_0001:   state <= INDX0;
-                8'b000x_0100:   state <= ZP0;   // TSB/TRB
-                8'bxxxx_x111:   state <= ZP0;   // SMB/RMB/BBS/BBR
-                8'bxxx0_01xx:   state <= ZP0;
-                8'b1101_0100:   state <= ZP0;   // CPZ (D4)
+                8'b000x_0100:   state <= BP0;   // TSB/TRB
+                8'bxxxx_x111:   state <= BP0;   // SMB/RMB/BBS/BBR
+                8'bxxx0_01xx:   state <= BP0;
+                8'b1101_0100:   state <= BP0;   // CPZ (D4)
                 8'bxxx0_1001:   state <= FETCH; // IMM
                 8'bxxx0_1101:   state <= ABS0;  // even D column
                 8'bxxx0_1110:   state <= ABS0;  // even E column
@@ -1021,8 +1021,8 @@ always @(posedge clk or posedge reset)
                 8'b1000_0011:   state <= BRA0;  // BRA
                 8'b0110_0011:   state <= JSR0;  // BRS
                 8'bxxx1_0001:   state <= INDY0; // odd 1 column
-                8'bxxx1_0010:   state <= INDY0; // (ZP),Z odd 2 column
-                8'bxxx1_01xx:   state <= ZPX0;  // odd 4,5,6,7 columns
+                8'bxxx1_0010:   state <= INDY0; // (BP),Z odd 2 column
+                8'bxxx1_01xx:   state <= BPX0;  // odd 4,5,6,7 columns
                 8'bxxx1_1001:   state <= ABSX0; // odd 9 column
                 8'bx011_1100:   state <= ABSX0; // C column BIT (3C), LDY (BC)
                 8'bxxx1_1101:   state <= ABSX0; // odd D column
@@ -1044,10 +1044,10 @@ always @(posedge clk or posedge reset)
 `endif
             endcase
 
-        ZP0     : state <= bbx_ins ? RDONLY : write_back ? READ : FETCH;
+        BP0     : state <= bbx_ins ? RDONLY : write_back ? READ : FETCH;
 
-        ZPX0    : state <= ZPX1;
-        ZPX1    : state <= write_back ? READ : FETCH;
+        BPX0    : state <= BPX1;
+        BPX1    : state <= write_back ? READ : FETCH;
 
         ABS0    : state <= ABS1;
         ABS1    : state <= write_back ? READ : FETCH;
