@@ -187,7 +187,6 @@ reg trb_ins;            // doing TRB instruction
 reg txb_ins;            // doing TSB/TRB instruction
 reg xmb_ins;            // doing SMB/RMB instruction
 reg bbx_ins;            // doing BBS/BBR instruction
-reg negate;             // doing NEG
 reg ind_jsr;            // doing an indirect jump to subroutine IND and IND, X
 reg ind_x_jsr;          // doing an indirect jump with X register offset to subroutine IND, X
 reg bit_ins;            // doing BIT instruction
@@ -202,6 +201,8 @@ reg cli;                // clear interrupt
 reg sei;                // set interrupt
 reg clv;                // clear overflow
 reg brk;                // doing BRK
+reg neg;                // doing NEG
+reg bsr;                // doing BSR instruction
 
 reg res;                // in reset
 
@@ -545,8 +546,10 @@ always @*
          RTS2,
          RTI3,
          BRK3,
-         JSR0,
          JSR2 : write_register = 1;
+
+        JSR0  : write_register = ~bsr;
+
 
        default: write_register = 0;
     endcase
@@ -718,7 +721,7 @@ always @*
         BRK2,
         INDX1:  AI = ADD;
 
-        REG:    AI = negate ? 8'h00 : regfile;
+        REG:    AI = neg ? 8'h00 : regfile;
 
         ZPX0,
         INDX0,
@@ -750,6 +753,8 @@ always @*
 
         BRA0B:  AI16 = { DIMUX, 8'h00 };
 
+        JSR0:   AI16 = { 8'h00, DIMUX };
+
         default:  AI16 = 0;
     endcase
 
@@ -775,7 +780,7 @@ always @*
          PULL0,
          RTS0:  BI = 8'h00;
 
-         REG:   BI = negate ? regfile : 8'h00;
+         REG:   BI = neg ? regfile : 8'h00;
 
          READ:  BI = xmb_ins ? (bit_code[3] ? 8'h01 << bit_code[2:0] : ~(8'h01 << bit_code[2:0])) : (txb_ins ? (trb_ins ? ~regfile : regfile) : 8'h00);
 
@@ -787,9 +792,12 @@ always @*
 
 always @*
     case( state )
-         BRA0:  BI16 = PC;
+         BRA0,
+         JSR0:  BI16 = PC;
 
-         BRA0B: BI16 = ADD16;
+         BRA0B,
+         JSR1,
+         JSR2:  BI16 = ADD16;
 
          default:       BI16 = 0;
     endcase
@@ -1011,6 +1019,7 @@ always @(posedge clk or posedge reset)
                 8'b1000_0000:   state <= BRA0;  // BRA
                 8'bxxx1_0011:   state <= BRA0;  // odd 0 column (Branches)
                 8'b1000_0011:   state <= BRA0;  // BRA
+                8'b0110_0011:   state <= JSR0;  // BRS
                 8'bxxx1_0001:   state <= INDY0; // odd 1 column
                 8'bxxx1_0010:   state <= INDY0; // (ZP),Z odd 2 column
                 8'bxxx1_01xx:   state <= ZPX0;  // odd 4,5,6,7 columns
@@ -1078,7 +1087,7 @@ always @(posedge clk or posedge reset)
 
         JSR0    : state <= JSR1;
         JSR1    : state <= JSR2;
-        JSR2    : state <= ind_jsr ? (ind_x_jsr ? JMPIX1 : JMPI1) : JSR3;
+        JSR2    : state <= bsr ? BRA0B : ind_jsr ? (ind_x_jsr ? JMPIX1 : JMPI1) : JSR3;
         JSR3    : state <= FETCH;
 
         RTI0    : state <= RTI1;
@@ -1463,15 +1472,6 @@ always @(posedge clk )
 always @(posedge clk )
      if( state == DECODE && RDY )
         casex( IR )
-                8'b0100_0010:   // NEG A
-                                negate <= 1;
-
-                default:        negate <= 0;
-        endcase
-
-always @(posedge clk )
-     if( state == DECODE && RDY )
-        casex( IR )
                 8'b0010_0010:   // JSR IND
                                 { ind_jsr, ind_x_jsr } <= 2'b10;
 
@@ -1506,6 +1506,8 @@ always @(posedge clk )
         cld <= (IR == 8'hd8);
         sed <= (IR == 8'hf8);
         brk <= (IR == 8'h00);
+        neg <= (IR == 8'h42);
+        bsr <= (IR == 8'h63);
      end
 
 always @(posedge clk)
