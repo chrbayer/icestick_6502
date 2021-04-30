@@ -182,6 +182,7 @@ reg adj_bcd;            // results should be BCD adjusted
  * some flip flops to remember we're doing special instructions. These
  * get loaded at the DECODE state, and used later
  */
+reg long_branch;        // doing a 16 bit range branch
 reg trb_ins;            // doing TRB instruction
 reg txb_ins;            // doing TSB/TRB instruction
 reg xmb_ins;            // doing SMB/RMB instruction
@@ -231,7 +232,8 @@ parameter
     ABSX1  = 6'd3,  // ABS, X  - fetch MSB and send to ALU (+Carry)
     ABSX2  = 6'd4,  // ABS, X  - Wait for ALU (only if needed)
     BRA0   = 6'd5,  // Branch  - fetch offset and send to 16 bit ALU
-    BRA1   = 6'd6,  // Branch  - fetch opcode
+    BRA0B  = 6'd6,  // Branch  - fetch offset and send to 16 bit ALU, high byte
+    BRA1   = 6'd7,  // Branch  - fetch opcode
     BRK0   = 6'd8,  // BRK/IRQ - push PCH, send S to ALU (-1)
     BRK1   = 6'd9,  // BRK/IRQ - push PCL, send S to ALU (-1)
     BRK2   = 6'd10, // BRK/IRQ - push P, send S to ALU (-1)
@@ -333,6 +335,7 @@ always @*
             BRK2:   statename = "BRK2";
             BRK3:   statename = "BRK3";
             BRA0:   statename = "BRA0";
+            BRA0B:  statename = "BRA0B";
             BRA1:   statename = "BRA1";
             JMP0:   statename = "JMP0";
             JMP1:   statename = "JMP1";
@@ -397,6 +400,7 @@ always @*
         FETCH,
         RDONLY,
         BRA0,
+        BRA0B,
         BRA1,
         BRK3,
         JMPI1,
@@ -742,7 +746,9 @@ always @*
 
 always @*
     case( state )
-        BRA0:   AI16 = { DIMUX[7] ? 8'hff : 8'h00, DIMUX };
+        BRA0:   AI16 = { ~long_branch && DIMUX[7] ? 8'hff : 8'h00, DIMUX };
+
+        BRA0B:  AI16 = { DIMUX, 8'h00 };
 
         default:  AI16 = 0;
     endcase
@@ -782,6 +788,8 @@ always @*
 always @*
     case( state )
          BRA0:  BI16 = PC;
+
+         BRA0B: BI16 = ADD16;
 
          default:       BI16 = 0;
     endcase
@@ -1001,6 +1009,8 @@ always @(posedge clk or posedge reset)
                 8'bxxx0_1110:   state <= ABS0;  // even E column
                 8'bxxx1_0000:   state <= BRA0;  // odd 0 column (Branches)
                 8'b1000_0000:   state <= BRA0;  // BRA
+                8'bxxx1_0011:   state <= BRA0;  // odd 0 column (Branches)
+                8'b1000_0011:   state <= BRA0;  // BRA
                 8'bxxx1_0001:   state <= INDY0; // odd 1 column
                 8'bxxx1_0010:   state <= INDY0; // (ZP),Z odd 2 column
                 8'bxxx1_01xx:   state <= ZPX0;  // odd 4,5,6,7 columns
@@ -1082,7 +1092,8 @@ always @(posedge clk or posedge reset)
         RTS2    : state <= RTS3;
         RTS3    : state <= FETCH;
 
-        BRA0    : state <= (bbx_ins & bit_cond_true) | (~bbx_ins & cond_true) ? BRA1 : DECODE;
+        BRA0    : state <= long_branch ? BRA0B : ((bbx_ins & bit_cond_true) | (~bbx_ins & cond_true) ? BRA1 : DECODE);
+        BRA0B   : state <= (bbx_ins & bit_cond_true) | (~bbx_ins & cond_true) ? BRA1 : DECODE;
         BRA1    : state <= DECODE;
 
         JMP0    : state <= JMP1;
@@ -1470,6 +1481,16 @@ always @(posedge clk )
                 default:        { ind_jsr, ind_x_jsr } <= 2'b00;
         endcase
 
+always @(posedge clk )
+     if( state == DECODE && RDY )
+        casex( IR )
+                8'bxxx1_0011,   // conditional branges
+                8'b1000_0011:   // BRA
+                                long_branch <= 1;
+
+                default:        long_branch <= 0;
+        endcase
+
 /*
  * special instructions
  */
@@ -1488,7 +1509,7 @@ always @(posedge clk )
      end
 
 always @(posedge clk)
-    if( RDY )
+    if( state == DECODE && RDY )
         cond_code <= IR[7:4];
 
 always @*
