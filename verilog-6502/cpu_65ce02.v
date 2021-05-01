@@ -203,6 +203,7 @@ reg clv;                // clear overflow
 reg brk;                // doing BRK
 reg neg;                // doing NEG
 reg bsr;                // doing BSR instruction
+reg rtn;                // doing RTN
 
 reg res;                // in reset
 
@@ -270,17 +271,19 @@ parameter
     RTI2   = 6'd40, // RTI     - read PCL from stack
     RTI3   = 6'd41, // RTI     - read PCH from stack
     RTI4   = 6'd42, // RTI     - read PCH from stack
-    RTS0   = 6'd43, // RTS     - send S to ALU (+1)
-    RTS1   = 6'd44, // RTS     - read PCL from stack
-    RTS2   = 6'd45, // RTS     - write PCL to ALU, read PCH
-    RTS3   = 6'd46, // RTS     - load PC and increment
-    WRITE  = 6'd47, // Write memory for read/modify/write
-    BP0    = 6'd48, // Z-page  - fetch BP address
-    BPX0   = 6'd49, // BP, X   - fetch BP, and send to ALU (+X)
-    BPX1   = 6'd50, // BP, X   - load from memory
-    JMPIX0 = 6'd51, // JMP (,X)- fetch LSB and send to ALU (+X)
-    JMPIX1 = 6'd52, // JMP (,X)- fetch MSB and send to ALU (+Carry)
-    JMPIX2 = 6'd53; // JMP (,X)- Wait for ALU (only if needed)
+    RTS0   = 6'd43, // RTS/RTN - send S to ALU (+1), DIMUX to 16 bit ALU
+    RTS1   = 6'd44, // RTS/RTN - read PCL from stack
+    RTS2   = 6'd45, // RTS/RTN - write PCL to ALU, read PCH
+    RTS3   = 6'd46, // RTS/RTN - load PC and increment
+    RTS4   = 6'd47, // RTN     - Add value stored in ADD16 to S with ALU
+    RTS5   = 6'd48, // RTN     - write S
+    WRITE  = 6'd49, // Write memory for read/modify/write
+    BP0    = 6'd50, // Z-page  - fetch BP address
+    BPX0   = 6'd51, // BP, X   - fetch BP, and send to ALU (+X)
+    BPX1   = 6'd52, // BP, X   - load from memory
+    JMPIX0 = 6'd53, // JMP (,X)- fetch LSB and send to ALU (+X)
+    JMPIX1 = 6'd54, // JMP (,X)- fetch MSB and send to ALU (+Carry)
+    JMPIX2 = 6'd55; // JMP (,X)- Wait for ALU (only if needed)
 
 `ifdef SIM
 
@@ -331,6 +334,8 @@ always @*
             RTS1:   statename = "RTS1";
             RTS2:   statename = "RTS2";
             RTS3:   statename = "RTS3";
+            RTS4:   statename = "RTS4";
+            RTS5:   statename = "RTS5";
             BRK0:   statename = "BRK0";
             BRK1:   statename = "BRK1";
             BRK2:   statename = "BRK2";
@@ -407,7 +412,8 @@ always @*
         JMPI1,
         JMP1,
         RTI4,
-        RTS3:           PC_inc = 1;
+        RTS3,
+        RTS5:           PC_inc = 1;
 
         JMPIX1:         PC_inc = ~CO;       // Don't increment PC if we are going to go through JMPIX2
 
@@ -544,6 +550,7 @@ always @*
 
         PULL1,
          RTS2,
+         RTS5,
          RTI3,
          BRK3,
          JSR2 : write_register = 1;
@@ -642,7 +649,9 @@ always @*
         RTI0,
         RTI3,
         RTS0,
-        RTS2   : regsel = SEL_SPL;
+        RTS2,
+        RTS4,
+        RTS5   : regsel = SEL_SPL;
 
         default: regsel = src_reg;
     endcase
@@ -729,6 +738,7 @@ always @*
         ABSX0,
         RTI0,
         RTS0,
+        RTS4,
         JSR0,
         JSR2,
         BRK0,
@@ -753,7 +763,8 @@ always @*
 
         BRA0B:  AI16 = { DIMUX, 8'h00 };
 
-        JSR0:   AI16 = { 8'h00, DIMUX };
+        JSR0,
+        RTS0:   AI16 = { 8'h00, DIMUX };
 
         default:  AI16 = 0;
     endcase
@@ -780,6 +791,8 @@ always @*
          PULL0,
          RTS0:  BI = 8'h00;
 
+         RTS4:  BI = ADD16[7:0];
+
          REG:   BI = neg ? regfile : 8'h00;
 
          READ:  BI = xmb_ins ? (bit_code[3] ? 8'h01 << bit_code[2:0] : ~(8'h01 << bit_code[2:0])) : (txb_ins ? (trb_ins ? ~regfile : regfile) : 8'h00);
@@ -797,7 +810,10 @@ always @*
 
          BRA0B,
          JSR1,
-         JSR2:  BI16 = ADD16;
+         JSR2,
+         RTS1,
+         RTS2,
+         RTS3:  BI16 = ADD16;
 
          default:       BI16 = 0;
     endcase
@@ -995,7 +1011,7 @@ always @(posedge clk or posedge reset)
                 8'b000x_1100:   state <= ABS0;  // TSB/TRB
                 8'b0100_0000:   state <= RTI0;  //
                 8'b0100_1100:   state <= JMP0;
-                8'b0110_0000:   state <= RTS0;
+                8'b0110_00x0:   state <= RTS0;  // RTS, RTN
                 8'b0110_1100:   state <= JMPI0;
                 8'b0111_1100:   state <= JMPIX0;
                 8'b0x00_1000:   state <= PUSH0;
@@ -1099,7 +1115,9 @@ always @(posedge clk or posedge reset)
         RTS0    : state <= RTS1;
         RTS1    : state <= RTS2;
         RTS2    : state <= RTS3;
-        RTS3    : state <= FETCH;
+        RTS3    : state <= rtn ? RTS4 : FETCH;
+        RTS4    : state <= RTS5;
+        RTS5    : state <= DECODE;
 
         BRA0    : state <= long_branch ? BRA0B : ((bbx_ins & bit_cond_true) | (~bbx_ins & cond_true) ? BRA1 : DECODE);
         BRA0B   : state <= (bbx_ins & bit_cond_true) | (~bbx_ins & cond_true) ? BRA1 : DECODE;
@@ -1508,6 +1526,7 @@ always @(posedge clk )
         brk <= (IR == 8'h00);
         neg <= (IR == 8'h42);
         bsr <= (IR == 8'h63);
+        rtn <= (IR == 8'h62);
      end
 
 always @(posedge clk)
