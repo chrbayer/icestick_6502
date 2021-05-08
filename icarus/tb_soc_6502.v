@@ -1,7 +1,7 @@
 // tb_tst_6502.v - testbench for test 6502 core
 // 02-11-19 E. Brombaugh
 
-`timescale 1ns/1ps
+//`timescale 1ns/1ps
 
 module tb_soc_6502;
     reg clk;
@@ -29,9 +29,18 @@ module tb_soc_6502;
         #10
         reset = 1'b0;
 
-`ifndef VERIFICATION
-        // stop after 1 sec
-		#100000 $finish;
+`ifdef VERIFICATION
+`ifdef VERIFICATION_6502
+		#381244400 $finish;
+`endif
+`ifdef VERIFICATION_65C02
+		#265881600 $finish;
+`endif
+`ifdef DECIMAL_TEST_65C02
+		#36180400 $finish;
+`endif
+`else       // stop after 1 sec
+		#10000 $finish;
 `endif
     end
 

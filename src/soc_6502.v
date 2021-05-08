@@ -88,13 +88,13 @@ module soc_6502(
 		rom_do <= rom_mem[CPU_AB[13:0]];
 	initial
 `ifdef VERIFICATION_6502
-		$monitor("test_case = %0h", ram_mem[512]);
+		$monitor("#%0t test_case = %0h", $time, ram_mem[512]);
 `endif
 `ifdef VERIFICATION_65C02
-		$monitor("test_case = %0h", ram_mem[512]);
+		$monitor("#%0t test_case = %0h", $time, ram_mem[512]);
 `endif
 `ifdef DECIMAL_TEST_65C02
-		$monitor("ERROR = %0h", ram_mem[11]);
+		$monitor("#%0t ERROR = %0h", $time, ram_mem[11]);
 `endif
 `else
     reg [7:0] rom_mem [0:4095];
