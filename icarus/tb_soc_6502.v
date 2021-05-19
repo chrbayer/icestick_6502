@@ -31,13 +31,13 @@ module tb_soc_6502;
 
 `ifdef VERIFICATION
 `ifdef VERIFICATION_6502
-		#381244400 $finish;
+		#338380000 $finish;
 `endif
 `ifdef VERIFICATION_65C02
-		#265881600 $finish;
+		#239610000 $finish;
 `endif
 `ifdef DECIMAL_TEST_65C02
-		#36180400 $finish;
+		#34310000 $finish;
 `endif
 `else       // stop after 1 sec
 		#10000 $finish;
