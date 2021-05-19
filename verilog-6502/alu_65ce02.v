@@ -107,23 +107,3 @@ assign V = AI7 ^ BI7 ^ CO ^ N;
 assign Z = ~|OUT;
 
 endmodule
-
-module alu_65ce02_addr( clk, AI, BI, OUT, RDY );
-	input clk;
-	input [15:0] AI;
-	input [15:0] BI;
-	output [15:0] OUT;
-	input RDY;
-
-reg [15:0] OUT;
-reg [15:0] temp;
-
-always @*
-	temp[15:0] = AI[15:0] + BI[15:0];
-
-always @(posedge clk)
-    if( RDY ) begin
-		OUT[15:0] <= temp[15:0];
-    end
-
-endmodule

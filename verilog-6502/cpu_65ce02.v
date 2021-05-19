@@ -67,8 +67,11 @@ input RDY;              // Ready signal. Pauses CPU when RDY=0
 reg  [15:0] PC;         // Program Counter
 reg  [7:0] ABL;         // Address Bus Register LSB
 reg  [7:0] ABH;         // Address Bus Register MSB
+reg  [7:0] ADL;         // Address Bus Data Register LSB
+reg  [7:0] ADH;         // Address Bus Data Register MSB
 wire [7:0] ADD;         // Adder Hold Register (registered in ALU)
-wire [15:0] ADD16;      // 16 bit Adder Hold Register (registered in 16 bit ALU)
+reg  [7:0] SPL;         // Stack Register LSB
+//reg  [7:0] SPH;         // Stack Register MSB
 
 reg  [7:0] DIHOLD;      // Hold for Data In
 reg  DIHOLD_valid;      //
@@ -77,7 +80,7 @@ wire [7:0] DIMUX;       //
 reg  [7:0] IRHOLD;      // Hold for Instruction register
 reg  IRHOLD_valid;      // Valid instruction in IRHOLD
 
-reg  [7:0] AXYZBS[6:0]; // A, X, Y, Z, B, SPL and SPH register file
+reg  [7:0] AXYZB[5:0];  // A, X, Y, Z, B register file
 
 reg  C = 0;             // carry flag (init at zero to avoid X's in ALU sim)
 reg  Z = 0;             // zero flag
@@ -95,8 +98,6 @@ wire HC;                // ALU half carry
 
 reg  [7:0] AI;          // ALU Input A
 reg  [7:0] BI;          // ALU Input B
-reg  [15:0] AI16;       // 16 bit ALU Input A
-reg  [15:0] BI16;       // 16 bit ALU Input B
 wire [7:0] DI;          // Data In
 wire [7:0] IR;          // Instruction register
 reg  [7:0] DO;          // Data Out
@@ -110,19 +111,16 @@ wire [7:0] PCL = PC[7:0];
 reg NMI_edge = 0;       // captured NMI edge
 
 reg [2:0] regsel;                       // Select A, X, Y or S register
-wire [7:0] regfile = AXYZBS[regsel];    // Selected register output
+wire [7:0] regfile = regsel == SEL_SPL ? SPL : AXYZB[regsel];    // Selected register output
 
 parameter
         SEL_A    = 3'd0,
-        SEL_SPL  = 3'd1,
-        SEL_SPH  = 3'd2,
-        SEL_X    = 3'd3,
-        SEL_Y    = 3'd4,
-        SEL_Z    = 3'd5,
-        SEL_B    = 3'd6;
-
-wire [7:0]    B = AXYZBS[SEL_B];           // Base page register
-wire [7:0]  SPH = AXYZBS[SEL_SPH];         // Stack pointer high byte
+        SEL_X    = 3'd1,
+        SEL_Y    = 3'd2,
+        SEL_Z    = 3'd3,
+        SEL_B    = 3'd4,
+        SEL_SPH  = 3'd5,
+        SEL_SPL  = 3'd6;
 
 /*
  * define some signals for watching in simulator output
@@ -130,12 +128,14 @@ wire [7:0]  SPH = AXYZBS[SEL_SPH];         // Stack pointer high byte
 
 
 `ifdef SIM
-wire [7:0]   A  = AXYZBS[SEL_A];           // Accumulator
-wire [7:0]   X  = AXYZBS[SEL_X];           // X register
-wire [7:0]   Y  = AXYZBS[SEL_Y];           // Y register
-wire [7:0] ZREG = AXYZBS[SEL_Z];           // Y register
-wire [7:0]  SPL = AXYZBS[SEL_SPL];         // Stack pointer low byte
+wire [7:0]   A  = AXYZB[SEL_A];           // Accumulator
+wire [7:0]   X  = AXYZB[SEL_X];           // X register
+wire [7:0]   Y  = AXYZB[SEL_Y];           // Y register
+wire [7:0] ZREG = AXYZB[SEL_Z];           // Y register
+wire [7:0]   B  = AXYZB[SEL_B];           // Base register
 `endif
+
+wire [7:0] SPH = AXYZB[SEL_SPH];
 
 wire [7:0] P = { N, V, 2'b11, D, I, Z, C };
 
@@ -151,11 +151,14 @@ reg [5:0] state;
 
 reg PC_inc;             // Increment PC
 reg [15:0] PC_temp;     // intermediate value of PC
+reg [7:0] SPL_temp;     // intermediate value of stack pointer
+reg SP_inc;             // Increment stack pointer
+reg SP_dec;             // Decrement stack pointer
 
-reg [2:0] src_reg;      // source register index
-reg [2:0] dst_reg;      // destination register index
+reg [3:0] src_reg;      // source register index
+reg [3:0] dst_reg;      // destination register index
 
-reg [2:0] index_sel;    // index register X, Y or Z
+reg [3:0] index_sel;    // index register X, Y or Z
 reg load_reg;           // loading a register (A, X, Y, S) in this instruction
 reg inc;                // increment
 reg write_back;         // set if memory is read/modified/written
@@ -165,6 +168,7 @@ reg adc_sbc;            // doing ADC/SBC
 reg compare;            // doing CMP/CPY/CPX
 reg shift;              // doing shift/rotate instruction
 reg rotate;             // doing rotate (no shift)
+reg backwards;          // backwards branch
 reg cond_true;          // branch condition is true
 reg [3:0] cond_code;    // condition code bits from instruction
 reg [3:0] bit_code;     // bit position and polarity for SMB/RMB/BBS/BBR
@@ -237,7 +241,7 @@ parameter
     BRA1   = 6'd6,  // Branch  - fetch opcode
     BRK0   = 6'd7,  // BRK/IRQ - push PCH, send S to ALU (-1)
     BRK1   = 6'd8,  // BRK/IRQ - push PCL, send S to ALU (-1)
-    BRK2   = 6'd9, // BRK/IRQ - push P, send S to ALU (-1)
+    BRK2   = 6'd9,  // BRK/IRQ - push P, send S to ALU (-1)
     BRK3   = 6'd10, // BRK/IRQ - write S, and fetch @ fffe
     DECODE = 6'd11, // IR is valid, decode instruction, and write prev reg
     FETCH  = 6'd12, // fetch next opcode, and perform prev ALU op
@@ -256,11 +260,11 @@ parameter
     JSR1   = 6'd25, // JSR     - push PCL, send S to ALU (-1)
     JSR2   = 6'd26, // JSR     - write S
     JSR3   = 6'd27, // JSR     - fetch MSB
-    PULL0  = 6'd28, // PLP/PLA/PLX/PLY - save next op in IRHOLD, send S to ALU (+1)
-    PULL1  = 6'd29, // PLP/PLA/PLX/PLY - fetch data from stack, write S
-    PULL2  = 6'd30, // PLP/PLA/PLX/PLY - prefetch op, but don't increment PC
-    PUSH0  = 6'd31, // PHP/PHA/PHX/PHY - send A to ALU (+0)
-    PUSH1  = 6'd32, // PHP/PHA/PHX/PHY - write A/P, send S to ALU (-1)
+    PULL0  = 6'd28, // PLP/PLA/PLX/PLY/PLZ - save next op in IRHOLD, send S to ALU (+1)
+    PULL1  = 6'd29, // PLP/PLA/PLX/PLY/PLZ - fetch data from stack, write S
+    PULL2  = 6'd30, // PLP/PLA/PLX/PLY/PLZ - prefetch op, but don't increment PC
+    PUSH0  = 6'd31, // PHP/PHA/PHX/PHY/PHZ - send A to ALU (+0)
+    PUSH1  = 6'd32, // PHP/PHA/PHX/PHY/PHZ - write A/P, send S to ALU (-1)
     READ   = 6'd33, // Read memory for read/modify/write (INC, DEC, shift)
     RDONLY = 6'd34, // Read memory for BBS/BBR
     REG    = 6'd35, // Read register for reg-reg transfers
@@ -365,14 +369,14 @@ always @*
                         else
                             PC_temp = PC;
 
-
         JMP1,
         JMPI1,
-        JSR3,
         RTS3,
         RTI4:           PC_temp = { DIMUX, ADD };
 
-        BRA1:           PC_temp = ADD16;
+        JSR3:           PC_temp = { DIMUX, ADL };
+
+        BRA1:           PC_temp = long_branch ? { ADD, ADL } : { ADH + (CO & ~backwards) - (backwards & ~CO), ADD };
 
         JMPIX1:         PC_temp = { DIMUX + CO, ADD };
 
@@ -412,11 +416,58 @@ always @*
     endcase
 
 /*
+ * Stack pointer Increment/Decrement/Load. First calculate the base value in
+ * SPL_temp.
+ */
+always @*
+    case ( state )
+        DECODE:         SPL_temp = ( regsel == SEL_SPL && write_register ) ? AO : SPL;
+
+        JSR0,
+        JSR2:           SPL_temp = AO;
+
+        default:        SPL_temp = SPL;
+    endcase
+
+/*
+ * Determine wether we need SP_inc to increment stack pointer
+ */
+always @*
+    case( state )
+        PULL0,
+        RTS5:           SP_inc = 1;
+
+        default:        SP_inc = 0;
+    endcase
+
+/*
+ * Determine wether we need SP_dec to decrement stack pointer
+ */
+always @*
+    case( state )
+        BRK0,
+        BRK1,
+        BRK2,
+        PUSH1,
+        JSR1,
+        JSR2:           SP_dec = 1;
+
+        default:        SP_dec = 0;
+    endcase
+
+/*
  * Set new PC
  */
 always @(posedge clk)
-    if( RDY )
+    if( RDY && ~reset )
         PC <= PC_temp + PC_inc;
+
+/*
+ * Set new stack pointer
+ */
+always @(posedge clk)
+    if( RDY )
+        SPL <= SPL_temp + SP_inc - SP_dec;
 
 /*
  * Address Generator
@@ -434,23 +485,24 @@ always @*
         JMPIX1,
         ABSX1:          AB = { DIMUX + CO, ADD };
 
-        BRA1:           AB = ADD16;
+        BRA1:           AB = long_branch ? { ADD, ADL } : { ADH + (CO & ~backwards) - (backwards & ~CO), ADD };
 
         JSR0,
         PUSH1,
         RTS0,
-        RTI0,
-        BRK0:           AB = { SPH, regfile };
+        RTI0:           AB = { SPH, regfile };
 
+        BRK0,
         BRK1,
+        BRK2:           AB = { SPH, SPL };
+
         JSR1,
         PULL1,
         RTS1,
         RTS2,
         RTI1,
         RTI2,
-        RTI3,
-        BRK2:           AB = { SPH, ADD };
+        RTI3:           AB = { SPH, ADD };
 
         INDY1,
         INDX1,
@@ -481,6 +533,19 @@ always @(posedge clk)
     end
 
 /*
+ * ADH/ADL is a helper address register pair.
+ */
+
+always @(posedge clk)
+    case( state )
+        BRA0:   ADH <= PCH;
+
+        BRA0B:  ADL <= ADD;
+
+        JSR0:   ADL <= DIMUX;
+    endcase
+
+/*
  * Data Out MUX
  */
 always @*
@@ -506,7 +571,7 @@ always @*
 
 always @*
     case( state )
-        BRK0,   // writing to stack or memory
+        BRK0,
         BRK1,
         BRK2,
         JSR0,
@@ -537,11 +602,10 @@ always @*
         DECODE: write_register = load_reg & ~plp;
 
         PULL1,
-         RTS2,
-         RTS5,
-         RTI3,
-         BRK3,
-         JSR2 : write_register = 1;
+        RTS2,
+        RTS5,
+        RTI3,
+        JSR2  : write_register = 1;
 
         JSR0  : write_register = ~bsr;
 
@@ -609,7 +673,8 @@ assign AZ1 = AZ;
  */
 always @(posedge clk)
     if( write_register & RDY )
-        AXYZBS[regsel] <= (state == JSR0) ? DIMUX : AO;
+        if ( regsel != SEL_SPL )
+            AXYZB[regsel] <= AO;
 
 /*
  * register select logic. This determines which of the A, X, Y or
@@ -627,8 +692,6 @@ always @*
 
         DECODE : regsel = dst_reg;
 
-        BRK0,
-        BRK3,
         JSR0,
         JSR2,
         PULL0,
@@ -664,12 +727,6 @@ alu_65ce02 ualu( .clk(clk),
          .HC(HC),
          .RDY(RDY) );
 
-alu_65ce02_addr ualu_addr( .clk(clk),
-         .AI(AI16),
-         .BI(BI16),
-         .OUT(ADD16),
-         .RDY(RDY) );
-
 /*
  * Select current ALU operation
  */
@@ -685,9 +742,6 @@ always @*
         ABS1:   alu_op = 1'bx;
 
         PUSH1,
-        BRK0,
-        BRK1,
-        BRK2,
         JSR0,
         JSR1:   alu_op = OP_SUB;
 
@@ -705,6 +759,14 @@ always @*
         { alu_shift_right, alu_arith_shift } = 2'b00;
 
 /*
+ * Sign extend branch offset.
+ */
+
+always @(posedge clk)
+    if( RDY )
+        backwards <= DIMUX[7];
+
+/*
  * ALU A Input MUX
  */
 
@@ -714,8 +776,6 @@ always @*
         RTS1,
         RTI1,
         RTI2,
-        BRK1,
-        BRK2,
         INDX1:  AI = ADD;
 
         REG:    AI = neg ? 8'h00 : regfile;
@@ -729,7 +789,6 @@ always @*
         RTS4,
         JSR0,
         JSR2,
-        BRK0,
         PULL0,
         INDY1,
         PUSH0,
@@ -737,24 +796,16 @@ always @*
 
         READ:   AI = DIMUX;
 
+        BRA0:   AI = PCL;
+
+        BRA0B:  AI = ABH;
+
         FETCH:  AI = load_only ? 0 : regfile;
 
         DECODE,
         ABS1:   AI = 8'hxx;     // don't care
 
         default:  AI = 0;
-    endcase
-
-always @*
-    case( state )
-        BRA0:   AI16 = { ~long_branch && DIMUX[7] ? 8'hff : 8'h00, DIMUX };
-
-        BRA0B:  AI16 = { DIMUX, 8'h00 };
-
-        JSR0,
-        RTS0:   AI16 = { 8'h00, DIMUX };
-
-        default:  AI16 = 0;
     endcase
 
 /*
@@ -771,15 +822,12 @@ always @*
          JSR0,
          JSR1,
          JSR2,
-         BRK0,
-         BRK1,
-         BRK2,
          PUSH0,
          PUSH1,
          PULL0,
          RTS0:  BI = 8'h00;
 
-         RTS4:  BI = ADD16[7:0];
+         RTS4:  BI = 0;//ADD16[7:0];
 
          REG:   BI = neg ? regfile : 8'h00;
 
@@ -791,27 +839,13 @@ always @*
          default:       BI = DIMUX;
     endcase
 
-always @*
-    case( state )
-         BRA0,
-         JSR0:  BI16 = PC;
-
-         BRA0B,
-         JSR1,
-         JSR2,
-         RTS1,
-         RTS2,
-         RTS3:  BI16 = ADD16;
-
-         default:       BI16 = 0;
-    endcase
-
 /*
  * ALU CI (carry in) mux
  */
 
 always @*
     case( state )
+        BRA0B,
         INDY2,
         JMPIX1,
         ABSX1:  CI = CO;
@@ -903,7 +937,7 @@ always @(posedge clk)
  */
 
 always @(posedge clk)
-    if( state == BRK3 )
+    if( state == BRK2 )
         I <= 1;
     else if( state == RTI2 )
         I <= DIMUX[2];
@@ -917,7 +951,7 @@ always @(posedge clk)
  * Update D flag
  */
 always @(posedge clk )
-    if( state == BRK3 )
+    if( state == BRK2 )
         D <= 0;
     else if( state == RTI2 )
         D <= DIMUX[3];
@@ -983,9 +1017,9 @@ always @(posedge clk or posedge reset)
     if( reset )
     begin
         state <= BRK0;
-        AXYZBS[SEL_B] <= ZEROPAGE;
-        AXYZBS[SEL_SPH] <= STACKPAGE;
-        AXYZBS[SEL_Z] <= ZDEFAULT;
+        AXYZB[SEL_B] <= ZEROPAGE;
+        AXYZB[SEL_Z] <= ZDEFAULT;
+        AXYZB[SEL_SPH] <= STACKPAGE;
     end
     else if( RDY ) case( state )
         DECODE  :
@@ -1308,7 +1342,7 @@ always @(posedge clk )
         endcase
 
 always @(posedge clk )
-     if( (state == DECODE || state == BRK0) && RDY )
+     if( state == DECODE && RDY )
         casex( IR )
                 8'bx111_0010,   // SBC (zp), ADC (zp)
                 8'bx11x_xx01:   // SBC, ADC
@@ -1318,7 +1352,7 @@ always @(posedge clk )
         endcase
 
 always @(posedge clk )
-     if( (state == DECODE || state == BRK0) && RDY )
+     if( state == DECODE && RDY )
         casex( IR )
                 8'b0111_0010,   // ADC (zp)
                 8'b011x_xx01:   // ADC
@@ -1559,7 +1593,7 @@ always @(posedge clk)
     NMI_1 <= NMI;
 
 always @(posedge clk )
-    if( NMI_edge && state == BRK3 )
+    if( NMI_edge && state == BRK2 )
         NMI_edge <= 0;
     else if( NMI & ~NMI_1 )
         NMI_edge <= 1;
