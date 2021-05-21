@@ -37,7 +37,7 @@ module tb_soc_6502;
 		#239610000 $finish;
 `endif
 `ifdef DECIMAL_TEST_65C02
-		#34310000 $finish;
+		#34350000 $finish;
 `endif
 `else       // stop after 1 sec
 		#10000 $finish;
