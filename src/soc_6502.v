@@ -38,7 +38,7 @@ module soc_6502(
 	reg [7:0] ram_mem [0:4095];
 `ifdef VERIFICATION
 	initial
-        $readmemb("null.hex",ram_mem);
+        $readmemh("null.hex", ram_mem);
 `endif
 	reg [7:0] ram_do;
 	always @(posedge clk)

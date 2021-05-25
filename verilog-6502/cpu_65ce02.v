@@ -29,16 +29,6 @@
  */
 
 /*
- * Two things were needed to correctly implement 65C02 NOPs
- * 1. Ensure the microcode state machine uses an appropriate addressing mode for the opcode length
- * 2. Ensure there are no side-effects (e.g. register updates, memory stores, etc)
- *
- * If IMPLEMENT_NOPS is defined, the state machine is modified accordingly.
- */
-
-`define IMPLEMENT_NOPS
-
-/*
  * Two things were needed to correctly implement 65C02 BCD arithmentic
  * 1. The Z flag needs calculating over the BCD adjusted ALU output
  * 2. The N flag needs calculating over the BCD adjusted ALU output
@@ -86,7 +76,7 @@ reg  C = 0;             // carry flag (init at zero to avoid X's in ALU sim)
 reg  Z = 0;             // zero flag
 reg  I = 0;             // interrupt flag
 reg  D = 0;             // decimal flag
-reg  E = 1;             // extended stack pointer flag
+reg  E = 1;             // extended stack pointer disable flag
 reg  V = 0;             // overflow flag
 reg  N = 0;             // negative flag
 wire AZ;                // ALU Zero flag
@@ -96,6 +86,8 @@ wire AV;                // ALU overflow flag
 wire AN;                // ALU negative flag
 wire AN1;               // ALU negative flag (BCD adjusted)
 wire HC;                // ALU half carry
+reg DLDC;               // Delayed C flag for 16 bit operations
+reg DLDZ;               // Delayed Z flag for 16 bit operations
 
 reg  [7:0] AI;          // ALU Input A
 reg  [7:0] BI;          // ALU Input B
@@ -162,6 +154,8 @@ reg [3:0] dst_reg;      // destination register index
 reg [3:0] index_sel;    // index register X, Y or Z
 reg load_reg;           // loading a register (A, X, Y, S) in this instruction
 reg inc;                // increment
+reg word;               // word operation (INW/DEW/ASW/ROW)
+reg word_abs;           // word absolute operation (ASW/ROW)
 reg write_back;         // set if memory is read/modified/written
 reg load_only;          // LDA/LDX/LDY/LDZ instruction
 reg store;              // doing store (STA/STX/STY)
@@ -241,13 +235,13 @@ parameter
     ABS1   = 6'd1,  // ABS     - fetch MSB
     ABSX0  = 6'd2,  // ABS, X  - fetch LSB and send to ALU (+X)
     ABSX1  = 6'd3,  // ABS, X  - fetch MSB and send to ALU (+Carry)
-    BRA0   = 6'd4,  // Branch  - fetch offset and send to 16 bit ALU
-    BRA0B  = 6'd5,  // Branch  - fetch offset and send to 16 bit ALU, high byte
+    BRA0   = 6'd4,  // Branch  - fetch offset and send to ALU (+PCL)
+    BRA0B  = 6'd5,  // Branch  - fetch offset and send to ALU (+PCH)
     BRA1   = 6'd6,  // Branch  - fetch opcode
-    BRK0   = 6'd7,  // BRK/IRQ - push PCH, send S to ALU (-1)
-    BRK1   = 6'd8,  // BRK/IRQ - push PCL, send S to ALU (-1)
-    BRK2   = 6'd9,  // BRK/IRQ - push P, send S to ALU (-1)
-    BRK3   = 6'd10, // BRK/IRQ - write S, and fetch @ fffe
+    BRK0   = 6'd7,  // BRK/IRQ - push PCH, decrement SP
+    BRK1   = 6'd8,  // BRK/IRQ - push PCL, decrement SP
+    BRK2   = 6'd9,  // BRK/IRQ - push P, decrement SP
+    BRK3   = 6'd10, // BRK/IRQ - fetch @ fffe
     DECODE = 6'd11, // IR is valid, decode instruction, and write prev reg
     FETCH  = 6'd12, // fetch next opcode, and perform prev ALU op
     INDX0  = 6'd13, // (BP,X)  - fetch BP address, and send to ALU (+X)
@@ -255,41 +249,44 @@ parameter
     INDX2  = 6'd15, // (BP,X)  - fetch MSB at BP+X+1
     INDX3  = 6'd16, // (BP,X)  - fetch data
     INDY0  = 6'd17, // (BP),Y/Z  - fetch BP address, and send BP to ALU (+1)
-    INDY1  = 6'd18, // (BP),Y/Z  - fetch at BP+1, and send LSB to ALU (+Y)
-    INDY2  = 6'd19, // (BP),Y/Z  - fetch data, and send MSB to ALU (+Carry)
+    INDY1  = 6'd18, // (BP),Y/Z  - fetch at BP+1, and send LSB to ALU (+Y/Z)
+    INDY2  = 6'd19, // (BP),Y/Z  - fetch data MSB and adjust to Carry
     JMP0   = 6'd20, // JMP     - fetch PCL and hold
     JMP1   = 6'd21, // JMP     - fetch PCH
     JMPI0  = 6'd22, // JMP IND - fetch LSB and send to ALU for delay (+0)
     JMPI1  = 6'd23, // JMP IND - fetch MSB, proceed with JMP0 state
-    JSR0   = 6'd24, // JSR     - push PCH, save LSB, send S to ALU (-1)
-    JSR1   = 6'd25, // JSR     - push PCL, send S to ALU (-1)
-    JSR2   = 6'd26, // JSR     - write S
+    JSR0   = 6'd24, // JSR     - push PCH, save LSB in ADL, decrement SP
+    JSR1   = 6'd25, // JSR     - push PCL, decrement SP
+    JSR2   = 6'd26, // JSR     - setup address for MSB
     JSR3   = 6'd27, // JSR     - fetch MSB
-    PULL0  = 6'd28, // PLP/PLA/PLX/PLY/PLZ - fetch data from stack, write S
-    PULL1  = 6'd29, // PLP/PLA/PLX/PLY/PLZ - prefetch op, but don't increment PC
-    PUSH0  = 6'd30, // PHP/PHA/PHX/PHY/PHZ - send A to ALU (+0)
+    PULL0  = 6'd28, // PLP/PLA/PLX/PLY/PLZ - setup address for SP+1, increment SP
+    PULL1  = 6'd29, // PLP/PLA/PLX/PLY/PLZ - fetch data
+    PUSH0  = 6'd30, // PHP/PHA/PHX/PHY/PHZ - push data to SP, decrement SP
     READ   = 6'd31, // Read memory for read/modify/write (INC, DEC, shift)
     RDONLY = 6'd32, // Read memory for BBS/BBR
     REG    = 6'd33, // Read register for reg-reg transfers
     RTI0   = 6'd34, // RTI     - read P from stack
     RTI1   = 6'd35, // RTI     - read PCL from stack
-    RTS0   = 6'd36, // RTS/RTN - read PCL from stack
-    RTS1   = 6'd37, // RTS/RTN - write PCL to ALU, read PCH
-    RTS2   = 6'd38, // RTS/RTN - load PC and increment
-    RTS3   = 6'd39, // RTN     - Add value stored in ADD16 to S with ALU
+    RTS0   = 6'd36, // RTS/RTN - read PCL from stack, store DIMUX for RTN in ALU
+    RTS1   = 6'd37, // RTS/RTN - write PCL to ADL, read PCH
+    RTS2   = 6'd38, // RTS/RTN - load PC and increment, add value fir RTN to SPL
+    RTS3   = 6'd39, // RTN     - Adjust SPH with Carry
     WRITE  = 6'd40, // Write memory for read/modify/write
     BP0    = 6'd41, // Z-page  - fetch BP address
     BPX0   = 6'd42, // BP, X   - fetch BP, and send to ALU (+X)
     BPX1   = 6'd43, // BP, X   - load from memory
     JMPIX0 = 6'd44, // JMP (,X)- fetch LSB and send to ALU (+X)
     JMPIX1 = 6'd45, // JMP (,X)- fetch MSB and send to ALU (+Carry)
-    SPIND0 = 6'd46,
-    SPIND1 = 6'd47,
-    SPIND2 = 6'd48,
-    PUSHW0 = 6'd49,
-    PUSHW1 = 6'd50,
-    PUSHW2 = 6'd51,
-    RDW0   = 6'd52;
+    SPIND0 = 6'd46, // Fetch offset, add offset to SPL
+    SPIND1 = 6'd47, // Fetch SP + offset as LSB
+    SPIND2 = 6'd48, // Fetch SP + offset + 1 as MSB, Y to LSB
+    PUSHW0 = 6'd49, // Setup address for push on stack
+    PUSHW1 = 6'd50, // Get MSB, Push MSB for imm16 push, decrement SP
+    PUSHW2 = 6'd51, // Push LSB for imm16 push, decrement SP
+    PHWRD0 = 6'd52, // Push MSB for 16 bit PHW a16
+    READW0 = 6'd53, // Setup read MSB for read/modify/write 16 bit
+    READW1 = 6'd54, // Read MSB for read/modify/write 16 bit
+    WRITEW = 6'd55; // Write MSB for read/modify/write 16 bit
 
 `ifdef SIM
 
@@ -352,7 +349,10 @@ always @*
             PUSHW0: statename = "PUSHW0";
             PUSHW1: statename = "PUSHW1";
             PUSHW2: statename = "PUSHW2";
-            RDW0:   statename = "RDW0";
+            PHWRD0: statename = "PHWRD0";
+            READW0: statename = "READW0";
+            READW1: statename = "READW1";
+            WRITEW: statename = "WRITEW";
 
     endcase
 
@@ -543,11 +543,15 @@ always @*
         SPIND1:         AB = { SPH + (E ? 8'd0 : CO), ADD };
 
         SPIND2,
-        RDW0:           AB = { ABH, ABL } + 16'd1;
+        PHWRD0:         AB = { ABH, ABL } + 16'd1;
 
         REG,
         READ,
-        WRITE:          AB = { ABH, ABL };
+        READW1,
+        WRITE,
+        WRITEW:         AB = { ABH, ABL };
+
+        READW0:         AB = word_abs ? { ABH, ABL } + 16'd1 : { ABH, ABL + 8'd1 };
 
         default:        AB = PC;
     endcase
@@ -558,8 +562,6 @@ always @*
  * source of the address, such as the ALU or DI.
  */
 always @(posedge clk)
-    if( state != PUSH0 && RDY &&
-        state != PULL0 && state != PULL1 )
     begin
         ABL <= AB[7:0];
         ABH <= AB[15:8];
@@ -589,6 +591,7 @@ always @(posedge clk)
 always @*
     case( state )
         WRITE,
+        WRITEW,
         PUSHW2: DO = ADD;
 
         JSR0,
@@ -620,7 +623,8 @@ always @*
         PUSH0,
         PUSHW1,
         PUSHW2,
-        WRITE:   WE = 1;
+        WRITE,
+        WRITEW:  WE = 1;
 
         INDX3,  // only if doing a STA, STX or STY
         INDY2,
@@ -701,9 +705,7 @@ assign AZ1 = AZ;
 
 /*
  * write to a register. Usually this is the (BCD corrected) output of the
- * ALU, but in case of the JSR0 we use the S register to temporarily store
- * the PCL. This is possible, because the S register itself is stored in
- * the ALU during those cycles.
+ * ALU.
  */
 always @(posedge clk)
     if( write_register & RDY )
@@ -755,7 +757,8 @@ alu_65ce02 ualu( .clk(clk),
 
 always @*
     case( state )
-        READ:   alu_op = op;
+        READ,
+        READW1: alu_op = op;
 
         FETCH,
         REG :   alu_op = op;
@@ -799,7 +802,8 @@ always @*
         INDY1,
         SPIND2: AI = regfile;
 
-        READ:   AI = DIMUX;
+        READ,
+        READW1: AI = DIMUX;
 
         JSR0,
         BRA0:   AI = PCL;
@@ -834,6 +838,8 @@ always @*
 
         READ:   BI = xmb_ins ? (bit_code[3] ? 8'h01 << bit_code[2:0] : ~(8'h01 << bit_code[2:0])) : (txb_ins ? (trb_ins ? ~regfile : regfile) : 8'h00);
 
+        READW1: BI = 0;
+
         DECODE,
         ABS1:   BI = 8'hxx;
 
@@ -865,6 +871,8 @@ always @*
         INDY0,
         INDX1:  CI = 1;
 
+        READW1: CI = DLDC;
+
         default:        CI = 0;
     endcase
 
@@ -877,7 +885,7 @@ always @*
  * Update C flag when doing ADC/SBC, shift/rotate, compare
  */
 always @(posedge clk )
-    if( shift && state == WRITE )
+    if( shift && ((state == WRITE && ~word) || state == WRITEW) )
         C <= CO;
     else if( state == RTI1 )
         C <= DIMUX[0];
@@ -893,6 +901,14 @@ always @(posedge clk )
     end
 
 /*
+ * Store delayed C flag for 16 bit operations
+ */
+
+always @(posedge clk )
+    if( word && state == WRITE )
+        DLDC <= CO;
+
+/*
  * Special Z flag got TRB/TSB
  */
 always @(posedge clk)
@@ -903,8 +919,14 @@ always @(posedge clk)
  */
 
 always @(posedge clk)
-    if( state == WRITE && ~xmb_ins )
-        Z <= txb_ins ? AZ2 : AZ1;
+    if( state == WRITE && ~xmb_ins ) begin
+        if( word )
+            DLDZ <= AZ1;
+        else
+            Z <= txb_ins ? AZ2 : AZ1;
+    end
+    else if( state == WRITEW )
+        Z <= AZ1 & DLDZ;
     else if( state == RTI1 )
         Z <= DIMUX[1];
     else if( state == DECODE ) begin
@@ -915,7 +937,7 @@ always @(posedge clk)
     end
 
 always @(posedge clk)
-    if( state == WRITE && ~txb_ins && ~xmb_ins )
+    if( ((state == WRITE && ~word) || state == WRITEW) && ~txb_ins && ~xmb_ins )
         N <= AN1;
     else if( state == RTI1 )
         N <= DIMUX[7];
@@ -1037,6 +1059,7 @@ always @(posedge clk or posedge reset)
                 8'b1x01_1100:   state <= ABS0;  // STZ abs, CPZ abs
                 8'b000x_1100:   state <= ABS0;  // TSB/TRB
                 8'b1111_1100:   state <= ABS0;  // PHW
+                8'b11x0_1011:   state <= ABS0;  // ASW, ROW
                 8'b0100_0000:   state <= RTI0;  // RTI
                 8'b0100_1100:   state <= JMP0;
                 8'b0110_00x0:   state <= RTS0;  // RTS, RTN
@@ -1058,6 +1081,7 @@ always @(posedge clk or posedge reset)
                 8'bxxxx_x111:   state <= BP0;   // SMB/RMB/BBS/BBR
                 8'bxxx0_01xx:   state <= BP0;
                 8'b1101_0100:   state <= BP0;   // CPZ (D4)
+                8'b11x0_0011:   state <= BP0;   // INW, DEW
                 8'bxxx0_1001:   state <= FETCH; // IMM
                 8'bxxx0_1101:   state <= ABS0;  // even D column
                 8'bxxx0_1110:   state <= ABS0;  // even E column
@@ -1084,11 +1108,7 @@ always @(posedge clk or posedge reset)
                 8'bxxx0_1010:   state <= REG;   // <shift> A, TXA, DEX, ...  NOP
                 8'b0xxx_1011:   state <= REG;   // TSY, DEZ, ...
                 8'b0x00_001x:   state <= REG;   // NEG, ASR, CLE, SEE
-`ifdef IMPLEMENT_NOPS
-                8'bxxxx_x011:   state <= REG;   // (NOP1: 3/B column)
-                8'bxxx0_0010:   state <= FETCH; // (NOP2: 2 column, 4 column handled correctly below)
-                8'bx1x1_1100:   state <= ABS0;  // (NOP3: C column)
-`endif
+                8'b0101_1100:   state <= ABS0;  // AUG
             endcase
 
         BP0     : state <= bbx_ins ? RDONLY : write_back ? READ : FETCH;
@@ -1097,7 +1117,7 @@ always @(posedge clk or posedge reset)
         BPX1    : state <= write_back ? READ : FETCH;
 
         ABS0    : state <= ABS1;
-        ABS1    : state <= phw ? RDW0 : write_back ? READ : FETCH;
+        ABS1    : state <= phw ? PHWRD0 : write_back ? READ : FETCH;
 
         ABSX0   : state <= ABSX1;
         ABSX1   : state <= write_back ? READ : FETCH;
@@ -1119,8 +1139,12 @@ always @(posedge clk or posedge reset)
         SPIND2  : state <= INDY2;
 
         READ    : state <= WRITE;
-        WRITE   : state <= FETCH;
+        WRITE   : state <= word ? READW0 : FETCH;
         FETCH   : state <= DECODE;
+
+        READW0  : state <= READW1;
+        READW1  : state <= WRITEW;
+        WRITEW  : state <= FETCH;
 
         REG     : state <= DECODE;
 
@@ -1128,7 +1152,7 @@ always @(posedge clk or posedge reset)
 
         PUSH0   : state <= DECODE;
 
-        RDW0    : state <= PUSHW1;
+        PHWRD0  : state <= PUSHW1;
 
         PUSHW0  : state <= PUSHW1;
         PUSHW1  : state <= PUSHW2;
@@ -1326,7 +1350,8 @@ always @(posedge clk )
                 8'b000x_x100,   // TSB/TRB
                 8'bxxxx_0111,   // SMB/RMB
                 8'b11xx_x110,   // DEC/INC
-                8'b010x_0100:   // ASR
+                8'b010x_0100,   // ASR
+                8'b11x0_x011:   // INW, DEW, ASW, ROW
                                 write_back <= 1;
 
                 default:        write_back <= 0;
@@ -1352,10 +1377,29 @@ always @(posedge clk )
                 8'b111x_x110,   // INC
                 8'b11x0_1000,   // INX, INY
                 8'b0001_1011,   // INZ
+                8'b1110_0011,   // INW
                 8'b0100_0010:   // NEG
                                 inc <= 1;
 
                 default:        inc <= 0;
+        endcase
+
+always @(posedge clk )
+     if( state == DECODE && RDY )
+        casex( IR )
+                8'b11x0_x011:   // INW, DEW, ASW, ROW
+                                word <= 1;
+
+                default:        word <= 0;
+        endcase
+
+always @(posedge clk )
+     if( state == DECODE && RDY )
+        casex( IR )
+                8'b11x0_1011:   // ASW, ROW
+                                word_abs <= 1;
+
+                default:        word_abs <= 0;
         endcase
 
 always @(posedge clk )
@@ -1384,7 +1428,8 @@ always @(posedge clk )
                 8'b0xxx_x110,   // ASL, ROL, LSR, ROR (abs, absx, zpg, zpgx)
                 8'b0xx0_1010,   // ASL, ROL, LSR, ROR (acc)
                 8'b010x_0100,   // ASR
-                8'b0100_0011:   // ASR
+                8'b0100_0011,   // ASR
+                8'b11x0_1011:   // ASW, ROW
                                 shift <= 1;
 
                 default:        shift <= 0;
@@ -1429,7 +1474,8 @@ always @(posedge clk )
      if( state == DECODE && RDY )
         casex( IR )
                 8'b0x10_1010,   // ROL A, ROR A
-                8'b0x1x_x110:   // ROR, ROL
+                8'b0x1x_x110,   // ROR, ROL
+                8'b1110_1011:   // ROW
                                 rotate <= 1;
 
                 default:        rotate <= 0;
@@ -1449,7 +1495,8 @@ always @(posedge clk )
                                 op <= OP_AND;
 
                 8'b00xx_x110,   // ROL, ASL
-                8'b00x0_1010:   // ROL, ASL
+                8'b00x0_1010,   // ROL, ASL
+                8'b11x0_1011:   // ROW, ASW
                                 op <= OP_ROL;
 
                 8'b01xx_x110,   // ROR, LSR
@@ -1467,7 +1514,7 @@ always @(posedge clk )
                 8'b11x0_0x00,   // CPX, CPY (imm, zpg)
                 8'b11x0_1100,   // CPY, CPY
                 8'b1101_x100,   // CPZ
-                8'b1100_0010,   // CPZ
+                8'b1100_001x,   // CPZ, DEW
                 8'b0100_0010:   // NEG
                                 op <= OP_SUB;
 
