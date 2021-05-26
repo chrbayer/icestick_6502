@@ -255,38 +255,37 @@ parameter
     JMP1   = 6'd21, // JMP     - fetch PCH
     JMPI0  = 6'd22, // JMP IND - fetch LSB and send to ALU for delay (+0)
     JMPI1  = 6'd23, // JMP IND - fetch MSB, proceed with JMP0 state
-    JSR0   = 6'd24, // JSR     - push PCH, save LSB in ADL, decrement SP
-    JSR1   = 6'd25, // JSR     - push PCL, decrement SP
-    JSR2   = 6'd26, // JSR     - setup address for MSB
-    JSR3   = 6'd27, // JSR     - fetch MSB
-    PULL0  = 6'd28, // PLP/PLA/PLX/PLY/PLZ - setup address for SP+1, increment SP
-    PULL1  = 6'd29, // PLP/PLA/PLX/PLY/PLZ - fetch data
-    PUSH0  = 6'd30, // PHP/PHA/PHX/PHY/PHZ - push data to SP, decrement SP
-    READ   = 6'd31, // Read memory for read/modify/write (INC, DEC, shift)
-    RDONLY = 6'd32, // Read memory for BBS/BBR
-    REG    = 6'd33, // Read register for reg-reg transfers
-    RTI0   = 6'd34, // RTI     - read P from stack
-    RTI1   = 6'd35, // RTI     - read PCL from stack
-    RTS0   = 6'd36, // RTS/RTN - read PCL from stack, store DIMUX for RTN in ALU
-    RTS1   = 6'd37, // RTS/RTN - write PCL to ADL, read PCH
-    RTS2   = 6'd38, // RTS/RTN - load PC and increment, add value fir RTN to SPL
-    RTS3   = 6'd39, // RTN     - Adjust SPH with Carry
-    WRITE  = 6'd40, // Write memory for read/modify/write
-    BP0    = 6'd41, // Z-page  - fetch BP address
-    BPX0   = 6'd42, // BP, X   - fetch BP, and send to ALU (+X)
-    BPX1   = 6'd43, // BP, X   - load from memory
-    JMPIX0 = 6'd44, // JMP (,X)- fetch LSB and send to ALU (+X)
-    JMPIX1 = 6'd45, // JMP (,X)- fetch MSB and send to ALU (+Carry)
-    SPIND0 = 6'd46, // Fetch offset, add offset to SPL
-    SPIND1 = 6'd47, // Fetch SP + offset as LSB
-    SPIND2 = 6'd48, // Fetch SP + offset + 1 as MSB, Y to LSB
-    PUSHW0 = 6'd49, // Setup address for push on stack
-    PUSHW1 = 6'd50, // Get MSB, Push MSB for imm16 push, decrement SP
-    PUSHW2 = 6'd51, // Push LSB for imm16 push, decrement SP
-    PHWRD0 = 6'd52, // Push MSB for 16 bit PHW a16
-    READW0 = 6'd53, // Setup read MSB for read/modify/write 16 bit
-    READW1 = 6'd54, // Read MSB for read/modify/write 16 bit
-    WRITEW = 6'd55; // Write MSB for read/modify/write 16 bit
+    JSR0   = 6'd24, // JSR     - fetch LSB in ADL
+    JSR1   = 6'd25, // JSR     - fetch MSB, push PCH, decrement SP
+    JSR2   = 6'd26, // JSR     - push PCL, decrement SP, setup PC to new address
+    PULL0  = 6'd27, // PLP/PLA/PLX/PLY/PLZ - setup address for SP+1, increment SP
+    PULL1  = 6'd28, // PLP/PLA/PLX/PLY/PLZ - fetch data
+    PUSH0  = 6'd29, // PHP/PHA/PHX/PHY/PHZ - push data to SP, decrement SP
+    READ   = 6'd30, // Read memory for read/modify/write (INC, DEC, shift)
+    RDONLY = 6'd31, // Read memory for BBS/BBR
+    REG    = 6'd32, // Read register for reg-reg transfers
+    RTI0   = 6'd33, // RTI     - read P from stack
+    RTI1   = 6'd34, // RTI     - read PCL from stack
+    RTS0   = 6'd35, // RTS/RTN - read PCL from stack, store DIMUX for RTN in ALU
+    RTS1   = 6'd36, // RTS/RTN - write PCL to ADL, read PCH
+    RTS2   = 6'd37, // RTS/RTN - load PC and increment, add value fir RTN to SPL
+    RTS3   = 6'd38, // RTN     - Adjust SPH with Carry
+    WRITE  = 6'd39, // Write memory for read/modify/write
+    BP0    = 6'd40, // Z-page  - fetch BP address
+    BPX0   = 6'd41, // BP, X   - fetch BP, and send to ALU (+X)
+    BPX1   = 6'd42, // BP, X   - load from memory
+    JMPIX0 = 6'd43, // JMP (,X)- fetch LSB and send to ALU (+X)
+    JMPIX1 = 6'd44, // JMP (,X)- fetch MSB and send to ALU (+Carry)
+    SPIND0 = 6'd45, // Fetch offset, add offset to SPL
+    SPIND1 = 6'd46, // Fetch SP + offset as LSB
+    SPIND2 = 6'd47, // Fetch SP + offset + 1 as MSB, Y to LSB
+    PUSHW0 = 6'd48, // Setup address for push on stack
+    PUSHW1 = 6'd49, // Get MSB, Push MSB for imm16 push, decrement SP
+    PUSHW2 = 6'd50, // Push LSB for imm16 push, decrement SP
+    PHWRD0 = 6'd51, // Push MSB for 16 bit PHW a16
+    READW0 = 6'd52, // Setup read MSB for read/modify/write 16 bit
+    READW1 = 6'd53, // Read MSB for read/modify/write 16 bit
+    WRITEW = 6'd54; // Write MSB for read/modify/write 16 bit
 
 `ifdef SIM
 
@@ -323,7 +322,6 @@ always @*
             JSR0:   statename = "JSR0";
             JSR1:   statename = "JSR1";
             JSR2:   statename = "JSR2";
-            JSR3:   statename = "JSR3";
             RTI0:   statename = "RTI0";
             RTI1:   statename = "RTI1";
             RTS0:   statename = "RTS0";
@@ -374,10 +372,12 @@ always @*
                         else
                             PC_temp = PC;
 
-        JMP1,
-        JMPI1:          PC_temp = { DIMUX, ADD };
+        JMP1:           PC_temp = { DIMUX, ADD };
 
-        JSR3,
+        JMPI1:          PC_temp = ind_jsr ? PC : { DIMUX, ADD };
+
+        JSR2:           PC_temp = { ADD, ADL };
+
         RTS2:           PC_temp = { DIMUX, ADL };
 
         BRA1:           PC_temp = long_branch ? { ADD, ADL } : { ADH + (CO & ~backwards) - (backwards & ~CO), ADD };
@@ -401,7 +401,6 @@ always @*
                             PC_inc = 1;
 
         ABS0,
-        JMPIX0,
         JMPIX1,
         ABSX0,
         FETCH,
@@ -469,8 +468,8 @@ always @*
         PUSH0,
         PUSHW1,
         PUSHW2,
-        JSR0,
-        JSR1:           SP_dec = 1;
+        JSR1,
+        JSR2:           SP_dec = 1;
 
         default:        SP_dec = 0;
     endcase
@@ -508,8 +507,9 @@ always @*
     case( state )
         INDX3,
         JMP1,
-        JMPI1,
         ABS1:           AB = { DIMUX, ADD };
+
+        JMPI1:          AB = ind_jsr ? PC : { DIMUX, ADD };
 
         INDY2,
         JMPIX1,
@@ -517,8 +517,8 @@ always @*
 
         BRA1:           AB = long_branch ? { ADD, ADL } : { ADH + (CO & ~backwards) - (backwards & ~CO), ADD };
 
-        JSR0,
         JSR1,
+        JSR2,
         BRK0,
         BRK1,
         BRK2,
@@ -535,10 +535,10 @@ always @*
         INDY1,
         INDX1,
         BPX1,
-        INDX2:          AB = { B, ADD };
+        INDX2:          AB = { AXYZB[SEL_B], ADD };
 
         BP0,
-        INDY0:          AB = { B, DIMUX };
+        INDY0:          AB = { AXYZB[SEL_B], DIMUX };
 
         SPIND1:         AB = { SPH + (E ? 8'd0 : CO), ADD };
 
@@ -575,6 +575,8 @@ always @(posedge clk)
     case( state )
         BRA0B:  ADL <= ADD;
 
+        JSR1:   if ( bsr | ind_x_jsr ) ADL <= ADD;
+
         JSR0,
         RTS1:   ADL <= DIMUX;
     endcase
@@ -592,12 +594,12 @@ always @*
     case( state )
         WRITE,
         WRITEW,
-        PUSHW2: DO = ADD;
-
-        JSR0,
-        BRK0:    DO = PCH;
+        PUSHW2:  DO = ADD;
 
         JSR1,
+        BRK0:    DO = PCH;
+
+        JSR2,
         BRK1:    DO = PCL;
 
         PUSH0:   DO = php ? P : regfile;
@@ -618,8 +620,8 @@ always @*
         BRK0,
         BRK1,
         BRK2,
-        JSR0,
         JSR1,
+        JSR2,
         PUSH0,
         PUSHW1,
         PUSHW2,
@@ -726,6 +728,8 @@ always @*
         JMPIX0,
         ABSX0  : regsel = index_sel;
 
+        JSR0   : regsel = ind_x_jsr ? index_sel : src_reg;
+
         DECODE : regsel = dst_reg;
 
         default: regsel = src_reg;
@@ -805,8 +809,11 @@ always @*
         READ,
         READW1: AI = DIMUX;
 
-        JSR0,
         BRA0:   AI = PCL;
+
+        JSR0:   AI = bsr ? PCL : ind_x_jsr ? regfile : 0;
+
+        JSR1:   AI = bsr ? ADH : 0;
 
         BRA0B:  AI = ABH;
 
@@ -829,8 +836,6 @@ always @*
     case( state )
         RTS1,
         RTS2,
-        JSR1,
-        JSR2,
         INDX1,
         PUSHW1: BI = ADD;
 
@@ -856,6 +861,8 @@ always @*
         INDY2,
         JMPIX1,
         ABSX1:  CI = CO;
+
+        JSR1:   CI = (bsr | ind_x_jsr) ? CO : 0;
 
         DECODE,
         ABS1:   CI = 1'bx;
@@ -1054,7 +1061,7 @@ always @(posedge clk or posedge reset)
                 // TODO Review for simplifications as in verilog the first matching case has priority
                 8'b0000_0000:   state <= BRK0;
                 8'b0010_0000:   state <= JSR0;
-                8'b0010_001x:   state <= JSR0;
+                8'b0010_001x:   state <= JSR0;  // JSR IND, JSR IND, X
                 8'b0010_1100:   state <= ABS0;  // BIT abs
                 8'b1x01_1100:   state <= ABS0;  // STZ abs, CPZ abs
                 8'b000x_1100:   state <= ABS0;  // TSB/TRB
@@ -1163,8 +1170,7 @@ always @(posedge clk or posedge reset)
 
         JSR0    : state <= JSR1;
         JSR1    : state <= JSR2;
-        JSR2    : state <= bsr ? BRA0B : ind_jsr ? (ind_x_jsr ? JMPIX1 : JMPI1) : JSR3;
-        JSR3    : state <= FETCH;
+        JSR2    : state <= ind_jsr ? JMPI1 : FETCH;
 
         RTI0    : state <= RTI1;
         RTI1    : state <= RTS1;
