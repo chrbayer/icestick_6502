@@ -84,6 +84,9 @@ module soc_6502(
 `ifdef DECIMAL_TEST_65C02
         $readmemh("65C02_decimal_test.hex", rom_mem);
 `endif
+`ifdef VERIFICATION_65CE02
+        $readmemh("65CE02_opcodes_test.hex", rom_mem);
+`endif
 	always @(posedge clk)
 		rom_do <= rom_mem[CPU_AB[13:0]];
 	initial
@@ -95,6 +98,9 @@ module soc_6502(
 `endif
 `ifdef DECIMAL_TEST_65C02
 		$monitor("#%0t ERROR = %0h", $time, ram_mem[11]);
+`endif
+`ifdef VERIFICATION_65CE02
+		$monitor("#%0t test_case = %0h", $time, ram_mem[514]);
 `endif
 `else
     reg [7:0] rom_mem [0:4095];

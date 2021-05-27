@@ -1,0 +1,2436 @@
+
+; 64tass Turbo Assembler Macro V1.56.2625? listing file
+; 64tass --m65ce02 --verbose-list -L map 65CE02_opcodes_test.t64
+; Fri May 28 01:00:43 2021
+
+;Offset	;Hex		;Monitor	;Source
+
+;******  Processing input file: 65CE02_opcodes_test.t64
+
+					;
+					; 6 5 C 0 2   E X T E N D E D   O P C O D E S   T E S T
+					;
+					; Copyright (C) 2013-2017  Klaus Dormann
+					;
+					; This program is free software: you can redistribute it and/or modify
+					; it under the terms of the GNU General Public License as published by
+					; the Free Software Foundation, either version 3 of the License, or
+					; (at your option) any later version.
+					;
+					; This program is distributed in the hope that it will be useful,
+					; but WITHOUT ANY WARRANTY; without even the implied warranty of
+					; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+					; GNU General Public License for more details.
+					;
+					; You should have received a copy of the GNU General Public License
+					; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+					; This program is designed to test all additional 65C02 opcodes, addressing
+					; modes and functionality not available in the NMOS version of the 6502.
+					; The 6502_functional_test is a prerequisite to this test.
+					; NMI, IRQ, STP & WAI are covered in the 6502_interrupt_test.
+					;
+					; version 04-dec-2017
+					; contact info at http://2m5.de or email K@2m5.de
+					;
+					; assembled with AS65 from http://www.kingswood-consulting.co.uk/assemblers/
+					; command line switches: -l -m -s2 -w -x -h0
+					;                         |  |  |   |  |  no page headers in listing
+					;                         |  |  |   |  65C02 extensions
+					;                         |  |  |   wide listing (133 char/col)
+					;                         |  |  write intel hex file instead of binary
+					;                         |  expand macros in listing
+					;                         generate pass2 listing
+					;
+					; No IO - should be run from a monitor with access to registers.
+					; To run load intel hex image with a load command, than alter PC to 400 hex
+					; (code_segment) and enter a go command.
+					; Loop on program counter determines error or successful completion of test.
+					; Check listing for relevant traps (jump/branch *).
+					; Please note that in early tests some instructions will have to be used before
+					; they are actually tested!
+					;
+					; RESET, NMI or IRQ should not occur and will be trapped if vectors are enabled.
+					; Tests documented behavior of the original 65C02 only!
+					; Decimal ops will only be tested with valid BCD operands and the V flag will
+					; be ignored as it is absolutely useless in decimal mode.
+					;
+					; Debugging hints:
+					;     Most of the code is written sequentially. if you hit a trap, check the
+					;   immediately preceeding code for the instruction to be tested. Results are
+					;   tested first, flags are checked second by pushing them onto the stack and
+					;   pulling them to the accumulator after the result was checked. The "real"
+					;   flags are no longer valid for the tested instruction at this time!
+					;     If the tested instruction was indexed, the relevant index (X or Y) must
+					;   also be checked. Opposed to the flags, X and Y registers are still valid.
+					;
+					; versions:
+					;   19-jul-2013  1st version distributed for testing
+					;   23-jul-2013  fixed BRA out of range due to larger trap macros
+					;                added RAM integrity check
+					;   16-aug-2013  added error report to standard output option
+					;   23-aug-2015  change revoked
+					;   24-aug-2015  all self modifying immediate opcodes now execute in data RAM
+					;   28-aug-2015  fixed decimal adc/sbc immediate only testing carry
+					;   09-feb-2017  fixed RMB/SMB tested when they shouldn't be tested
+					;   04-dec-2017  fixed BRK not tested for actually going through the IRQ vector
+					;                added option to skip the remainder of a failing test
+					;                in report.i65
+					;                added skip override to undefined opcode as NOP test
+
+
+					; C O N F I G U R A T I O N
+
+					;ROM_vectors writable (0=no, 1=yes)
+					;if ROM vectors can not be used interrupts will not be trapped
+					;as a consequence BRK can not be tested but will be emulated to test RTI
+=1					ROM_vectors = 1
+
+					;load_data_direct (0=move from code segment, 1=load directly)
+					;loading directly is preferred but may not be supported by your platform
+					;0 produces only consecutive object code, 1 is not suitable for a binary image
+=0					load_data_direct = 0
+
+					;I_flag behavior (0=force enabled, 1=force disabled, 2=prohibit change, 3=allow
+					;change) 2 requires extra code and is not recommended.
+=3					I_flag = 3
+
+					;configure memory - try to stay away from memory used by the system
+					;zero_page memory start address, $4e (78) consecutive Bytes required
+					;                                add 2 if I_flag = 2
+=$a					zero_page = $a
+
+					;data_segment memory start address, $63 (99) consecutive Bytes required
+					; + 12 Bytes at data_segment + $f9 (JMP indirect page cross test)
+=$200					data_segment = $200
+					    .if (data_segment & $ff) != 0
+					    .endif
+
+					;code_segment memory start address, 10kB of consecutive space required
+					;                                   add 1 kB if I_flag = 2
+=$c000					code_segment = $c000
+
+					;added WDC only opcodes WAI & STP (0=test as NOPs, >0=no test)
+=1					wdc_op = 1
+
+					;added Rockwell & WDC opcodes BBR, BBS, RMB & SMB
+					;(0=test as NOPs, 1=full test, >1=no test)
+=1					rkwl_wdc_op = 1
+
+					;skip testing all undefined opcodes override
+					;0=test as NOP, >0=skip
+=0					skip_nop = 0
+
+					;report errors through I/O channel (0=use standard self trap loops, 1=include
+					;report.i65 as I/O channel, add 3 kB)
+=0					report = 0
+
+					;RAM integrity test option. Checks for undesired RAM writes.
+					;set lowest non RAM or RAM mirror address page (-1=disable, 0=64k, $40=16k)
+					;leave disabled if a monitor, OS or background interrupt is allowed to alter RAM
+=$10					ram_top = $10
+
+					        ;noopt       ;do not take shortcuts
+
+					;macros for error & success traps to allow user modification
+					;example:
+					;trap    .macro
+					;        jsr my_error_handler
+					;        .endm
+					;trap_eq .macro
+					;        bne skip
+					;        trap           ;failed equal (zero)
+					;skip
+					;        .endm
+					;
+					; my_error_handler should pop the calling address from the stack and report it.
+					; putting larger portions of code (more than 3 bytes) inside the trap macro
+					; may lead to branch range problems for some tests.
+					    .if report == 0
+					trap    .macro
+					        .endm
+					trap_eq .macro
+					        .endm
+					trap_ne .macro
+					        .endm
+					trap_cs .macro
+					        .endm
+					trap_cc .macro
+					        .endm
+					trap_mi .macro
+					        .endm
+					trap_pl .macro
+					        .endm
+					trap_vs .macro
+					        .endm
+					trap_vc .macro
+					        .endm
+					; please observe that during the test the stack gets invalidated
+					; therefore a RTS inside the success macro is not possible
+					success .macro
+					        .endm
+					    .endif
+					    .if report == 1
+					    .endif
+
+
+=$01					carry   = %00000001   ;flag bits in status
+=$02					zero    = %00000010
+=$04					intdis  = %00000100
+=$08					decmode = %00001000
+=$10					break   = %00010000
+=$20					reserv  = %00100000
+=$40					overfl  = %01000000
+=$80					minus   = %10000000
+
+=$01					fc      = carry
+=$02					fz      = zero
+=3					fzc     = carry+zero
+=$40					fv      = overfl
+=66					fvz     = overfl+zero
+=$80					fn      = minus
+=129					fnc     = minus+carry
+=130					fnz     = minus+zero
+=131					fnzc    = minus+zero+carry
+=192					fnv     = minus+overfl
+
+=48					fao     = break+reserv    ;bits always on after PHP, BRK
+=52					fai     = fao+intdis      ;+ forced interrupt disable
+=$ff					m8      = $ff             ;8 bit mask
+=$fb					m8i     = $ff&~intdis     ;8 bit mask - interrupt disable
+
+					;macros to allow masking of status bits.
+					;masking of interrupt enable/disable on load and compare
+					;masking of always on bits after PHP or BRK (unused & break) on compare
+					        .if I_flag == 0
+					        .endif
+					        .if I_flag == 1
+					        .endif
+					        .if I_flag == 2
+					        .endif
+					        .if I_flag == 3
+					load_flag   .macro
+					            .endm
+					cmp_flag    .macro
+					            .endm
+					eor_flag    .macro
+					            .endm
+					        .endif
+
+					;macros to set (register|memory|zeropage) & status
+					set_stat    .macro       ;setting flags in the processor status register
+					            .endm
+
+					set_a       .macro       ;precharging accu & status
+					            .endm
+
+					set_x       .macro       ;precharging index & status
+					            .endm
+
+					set_y       .macro       ;precharging index & status
+					            .endm
+
+					set_z       .macro       ;precharging index & status
+					            .endm
+
+					set_ax      .macro       ;precharging indexed accu & immediate status
+					            .endm
+
+					set_ay      .macro       ;precharging indexed accu & immediate status
+					            .endm
+
+					set_zp      .macro       ;precharging indexed zp & immediate status
+					            .endm
+
+					set_zx      .macro       ;precharging zp,x & immediate status
+					            .endm
+
+					set_abs     .macro       ;precharging indexed memory & immediate status
+					            .endm
+
+					set_absx    .macro       ;precharging abs,x & immediate status
+					            .endm
+
+					;macros to test (register|memory|zeropage) & status & (mask)
+					tst_stat    .macro       ;testing flags in the processor status register
+					            .endm
+
+					tst_a       .macro       ;testing result in accu & flags
+					            .endm
+
+					tst_as      .macro       ;testing result in accu & flags, save accu
+					            .endm
+
+					tst_x       .macro       ;testing result in x index & flags
+					            .endm
+
+					tst_y       .macro       ;testing result in y index & flags
+					            .endm
+
+					tst_z       .macro       ;testing result in z index & flags
+					            .endm
+
+					tst_ax      .macro       ;indexed testing result in accu & flags
+					            .endm
+
+					tst_ay      .macro       ;indexed testing result in accu & flags
+					            .endm
+
+					tst_zp      .macro       ;indexed testing result in zp & flags
+					            .endm
+
+					tst_zx      .macro       ;testing result in zp,x & flags
+					            .endm
+
+					tst_abs     .macro       ;indexed testing result in memory & flags
+					            .endm
+
+					tst_absx    .macro       ;testing result in abs,x & flags
+					            .endm
+
+=0					test_num    .var 0
+					next_test   .segment        ;make sure, tests don't jump the fence
+					            .endm
+
+					bss        .segment
+					        .endm
+
+					data    .segment
+					        .endm
+
+
+					*       = zero_page
+					        .dsection bss
+					;break test interrupt save
+>000a	00				irq_a   .byte 0                ;a register
+>000b	00				irq_x   .byte 0                ;x register
+					    .if I_flag == 2
+					    .endif
+.000c					zpt                            ;5 bytes store/modify test area
+					;add/subtract operand generation and result/flag prediction
+>000c	00				adfc    .byte 0                ;carry flag before op
+>000d	00				ad1     .byte 0                ;operand 1 - accumulator
+>000e	00				ad2     .byte 0                ;operand 2 - memory / immediate
+>000f	00				adrl    .byte 0                ;expected result bits 0-7
+>0010	00				adrh    .byte 0                ;expected result bit 8 (carry)
+>0011	00				adrf    .byte 0                ;expected flags NV0000ZC (-V in decimal mode)
+>0012	00				sb2     .byte 0                ;operand 2 complemented for subtract
+.0013					zp_bss
+>0013	c3 82 41 00			zp1     .byte  $c3,$82,$41,0   ;test patterns for LDx BIT ROL ROR ASL LSR
+>0017	7f				zp7f    .byte  $7f             ;test pattern for compare
+					;logical zeropage operands
+>0018	00 1f 71 80			zpOR    .byte  0,$1f,$71,$80   ;test pattern for OR
+>001c	0f ff 7f 80			zpAN    .byte  $0f,$ff,$7f,$80 ;test pattern for AND
+>0020	ff 0f 8f 8f			zpEO    .byte  $ff,$0f,$8f,$8f ;test pattern for EOR
+					;indirect addressing pointers
+>0024	10 02				ind1    .word  abs1            ;indirect pointer to pattern in absolute memory
+>0026	11 02				        .word  abs1+1
+>0028	12 02				        .word  abs1+2
+>002a	13 02				        .word  abs1+3
+>002c	14 02				        .word  abs7f
+>002e	18 01				inw1    .word  abs1-$f8        ;indirect pointer for wrap-test pattern
+>0030	05 02				indt    .word  abst            ;indirect pointer to store area in absolute memory
+>0032	06 02				        .word  abst+1
+>0034	07 02				        .word  abst+2
+>0036	08 02				        .word  abst+3
+>0038	0d 01				inwt    .word  abst-$f8        ;indirect pointer for wrap-test store
+>003a	47 02				indAN   .word  absAN           ;indirect pointer to AND pattern in absolute memory
+>003c	48 02				        .word  absAN+1
+>003e	49 02				        .word  absAN+2
+>0040	4a 02				        .word  absAN+3
+>0042	4b 02				indEO   .word  absEO           ;indirect pointer to EOR pattern in absolute memory
+>0044	4c 02				        .word  absEO+1
+>0046	4d 02				        .word  absEO+2
+>0048	4e 02				        .word  absEO+3
+>004a	43 02				indOR   .word  absOR           ;indirect pointer to OR pattern in absolute memory
+>004c	44 02				        .word  absOR+1
+>004e	45 02				        .word  absOR+2
+>0050	46 02				        .word  absOR+3
+					;add/subtract indirect pointers
+>0052	05 02				adi2    .word  ada2            ;indirect pointer to operand 2 in absolute memory
+>0054	06 02				sbi2    .word  sba2            ;indirect pointer to complemented operand 2 (SBC)
+>0056	06 01				adiy2   .word  ada2-$ff        ;with offset for indirect indexed
+>0058	07 01				sbiy2   .word  sba2-$ff
+.005a					zp_bss_end
+
+					*       = data_segment
+					        .dsection data
+>0200	00 00				pg_x    .byte  0,0             ;high JMP indirect address for page cross bug
+>0202	00				test_case   .byte  0           ;current test number
+>0203	00 00				ram_chksm   .byte  0,0         ;checksum for RAM integrity test
+					;add/subtract operand copy - abs tests write area
+.0205					abst                           ;5 bytes store/modify test area
+>0205	00				ada2    .byte  0               ;operand 2
+>0206	00				sba2    .byte  0               ;operand 2 complemented for subtract
+>0207	00 00 00			        .byte  0,0,0           ;fill remaining bytes
+.020a					data_bss
+					    .if load_data_direct = 1
+					    .else
+>020a	00 00 00			ex_adci .byte  0,0,0
+>020d	00 00 00			ex_sbci .byte  0,0,0
+					    .endif
+>0210	c3 82 41 00			abs1    .byte  $c3,$82,$41,0   ;test patterns for LDx BIT ROL ROR ASL LSR
+>0214	7f				abs7f   .byte  $7f             ;test pattern for compare
+					;loads
+>0215	80 80 00 02			fLDx    .byte  fn,fn,0,fz      ;expected flags for load
+					;shifts
+.0219					rASL                           ;expected result ASL & ROL -carry
+>0219	86 04 82 00			rROL    .byte  $86,$04,$82,0   ; "
+>021d	87 05 83 01			rROLc   .byte  $87,$05,$83,1   ;expected result ROL +carry
+.0221					rLSR                           ;expected result LSR & ROR -carry
+>0221	61 41 20 00			rROR    .byte  $61,$41,$20,0   ; "
+>0225	e1 c1 a0 80			rRORc   .byte  $e1,$c1,$a0,$80 ;expected result ROR +carry
+.0229					fASL                           ;expected flags for shifts
+>0229	81 01 80 02			fROL    .byte  fnc,fc,fn,fz    ;no carry in
+>022d	81 01 80 00			fROLc   .byte  fnc,fc,fn,0     ;carry in
+.0231					fLSR
+>0231	01 00 01 02			fROR    .byte  fc,0,fc,fz      ;no carry in
+>0235	81 80 81 80			fRORc   .byte  fnc,fn,fnc,fn   ;carry in
+					;increments (decrements)
+>0239	7f 80 ff 00 01			rINC    .byte  $7f,$80,$ff,0,1 ;expected result for INC/DEC
+>023e	00 80 80 02 00			fINC    .byte  0,fn,fn,fz,0    ;expected flags for INC/DEC
+					;logical memory operand
+>0243	00 1f 71 80			absOR   .byte  0,$1f,$71,$80   ;test pattern for OR
+>0247	0f ff 7f 80			absAN   .byte  $0f,$ff,$7f,$80 ;test pattern for AND
+>024b	ff 0f 8f 8f			absEO   .byte  $ff,$0f,$8f,$8f ;test pattern for EOR
+					;logical accu operand
+>024f	00 f1 1f 00			absORa  .byte  0,$f1,$1f,0     ;test pattern for OR
+>0253	f0 ff ff ff			absANa  .byte  $f0,$ff,$ff,$ff ;test pattern for AND
+>0257	ff f0 f0 0f			absEOa  .byte  $ff,$f0,$f0,$0f ;test pattern for EOR
+					;logical results
+>025b	00 ff 7f 80			absrlo  .byte  0,$ff,$7f,$80
+>025f	02 80 00 80			absflo  .byte  fz,fn,0,fn
+.0263					data_bss_end
+					;define area for page crossing JMP (abs) & JMP (abs,x) test
+=761					jxi_tab = data_segment + $100 - 7     ;JMP (jxi_tab,x) x=6
+=765					ji_tab  = data_segment + $100 - 3     ;JMP (ji_tab+2)
+=768					jxp_tab = data_segment + $100         ;JMP (jxp_tab-255) x=255
+
+					code    .segment
+					        .endm code
+
+					*       = code_segment
+					        .dsection code
+.c000	d8		cld		start   cld
+.c001	a2 ff		ldx #$ff	        ldx #$ff
+.c003	9a		txs		        txs
+.c004	a9 00		lda #$00	        lda #0          ;*** test 0 = initialize
+.c006	8d 02 02	sta $0202	        sta test_case
+
+					;stop interrupts before initializing BSS
+					    .if I_flag == 1
+					    .endif
+
+					;initialize I/O for report channel
+					    .if report == 1
+					    .endif
+
+					;initialize BSS segment
+					    .if load_data_direct != 1
+.c009	a2 46		ldx #$46	        ldx #zp_end-zp_init-1
+.c00b	bd 62 cb	lda $cb62,x	ld_zp   lda zp_init,x
+.c00e	95 13		sta $13,x	        sta zp_bss,x
+.c010	ca		dex		        dex
+.c011	10 f8		bpl $c00b	        bpl ld_zp
+.c013	a2 58		ldx #$58	        ldx #data_end-data_init-1
+.c015	bd a9 cb	lda $cba9,x	ld_data lda data_init,x
+.c018	9d 0a 02	sta $020a,x	        sta data_bss,x
+.c01b	ca		dex		        dex
+.c01c	10 f7		bpl $c015	        bpl ld_data
+					    .endif
+
+					;retain status of interrupt flag
+					    .if I_flag == 2
+					    .endif
+
+					;generate checksum for RAM integrity test
+					    .if ram_top > -1
+.c01e	a9 00		lda #$00	        lda #0
+.c020	85 0c		sta $0c		        sta zpt         ;set low byte of indirect pointer
+.c022	8d 04 02	sta $0204	        sta ram_chksm+1 ;checksum high byte
+.c025	a2 0b		ldx #$0b	        ldx #11         ;reset modifiable RAM
+.c027	9d f9 02	sta $02f9,x	gcs1    sta jxi_tab,x   ;JMP indirect page cross area
+.c02a	ca		dex		        dex
+.c02b	10 fa		bpl $c027	        bpl gcs1
+.c02d	18		clc		        clc
+.c02e	a2 09		ldx #$09	        ldx #zp_bss-zero_page ;zeropage - write test area
+.c030	75 0a		adc $0a,x	gcs3    adc zero_page,x
+.c032	90 04		bcc $c038	        bcc gcs2
+.c034	ee 04 02	inc $0204	        inc ram_chksm+1 ;carry to high byte
+.c037	18		clc		        clc
+.c038	e8		inx		gcs2    inx
+.c039	d0 f5		bne $c030	        bne gcs3
+.c03b	a2 02		ldx #$02	        ldx #>(abs1)   ;set high byte of indirect pointer
+.c03d	86 0d		stx $0d		        stx zpt+1
+.c03f	a0 10		ldy #$10	        ldy #<(abs1)   ;data after write & execute test area
+.c041	71 0c		adc ($0c),y	gcs5    adc (zpt),y
+.c043	90 04		bcc $c049	        bcc gcs4
+.c045	ee 04 02	inc $0204	        inc ram_chksm+1 ;carry to high byte
+.c048	18		clc		        clc
+.c049	c8		iny		gcs4    iny
+.c04a	d0 f5		bne $c041	        bne gcs5
+.c04c	e8		inx		        inx             ;advance RAM high address
+.c04d	86 0d		stx $0d		        stx zpt+1
+.c04f	e0 10		cpx #$10	        cpx #ram_top
+.c051	d0 ee		bne $c041	        bne gcs5
+.c053	8d 03 02	sta $0203	        sta ram_chksm   ;checksum complete
+					    .endif
+.c056	ad 02 02	lda $0202	            lda test_case   ;previous test
+.c059	c9 00		cmp #$00	            cmp #test_num
+.c05b	d0 fe		bne $c05b	        bne *           ;failed not equal (non zero)
+=1					test_num    .var test_num + 1
+.c05d	a9 01		lda #$01	            lda #test_num   ;*** next tests' number
+.c05f	8d 02 02	sta $0202	            sta test_case
+					            ;check_ram       ;uncomment to find altered RAM after each test
+
+					; quick/dirty test 16-bit branches by jumping across Z register test code (which should be more than 128 bytes large).
+
+.c062	a0 00		ldy #$00	        ldy #0
+.c064	83 db 01	bra $c241	        bra braf0       ; branch should always be taken
+.c067	4c 67 c0	jmp $c067	        jmp *           ;failed anyway
+
+.c06a	88		dey		        dey
+.c06b	88		dey		        dey
+.c06c	88		dey		brab0   dey             ; We should land here, or Y test will fail
+.c06d	88		dey		        dey
+.c06e	88		dey		        dey
+.c06f	c0 00		cpy #$00	        cpy #0
+.c071	d0 fe		bne $c071	        bne *           ;failed not equal (non zero)
+
+					        ; Check one conditional branch
+.c073	f3 d8 01	beq $c24d	        beq beqf0
+.c076	4c 76 c0	jmp $c076	        jmp *           ;failed anyway
+
+.c079	88		dey		        dey
+.c07a	88		dey		        dey
+.c07b	88		dey		beqb0   dey             ; We should land here, or Y test will fail
+.c07c	88		dey		        dey
+.c07d	88		dey		        dey
+.c07e	c0 00		cpy #$00	        cpy #0
+.c080	d0 fe		bne $c080	        bne *           ;failed not equal (non zero)
+
+					        ; 16-bit BSR test
+.c082	a0 00		ldy #$00	        ldy #0
+.c084	63 d3 01	bsr $c259	        bsr bsrf0
+.c087	88		dey		        dey
+.c088	88		dey		        dey
+.c089	88		dey		        dey
+.c08a	c0 00		cpy #$00	        cpy #0
+.c08c	d0 fe		bne $c08c	        bne *           ;failed not equal (non zero)
+
+.c08e	ad 02 02	lda $0202	            lda test_case   ;previous test
+.c091	c9 01		cmp #$01	            cmp #test_num
+.c093	d0 fe		bne $c093	        bne *           ;failed not equal (non zero)
+=2					test_num    .var test_num + 1
+.c095	a9 02		lda #$02	            lda #test_num   ;*** next tests' number
+.c097	8d 02 02	sta $0202	            sta test_case
+					            ;check_ram       ;uncomment to find altered RAM after each test
+
+					; Basic Z register tests.  Verify that Z can be changed and basic comparisons work.
+
+					        ; test STZ zp gives #$aa
+.c09a	a3 aa		ldz #$aa	        ldz #$aa
+.c09c	c2 aa		cpz #$aa	        cpz #$aa        ; verify load/compare immediate is ok
+.c09e	d0 fe		bne $c09e	        bne *           ;failed not equal (non zero)
+
+.c0a0	a9 55		lda #$55	        lda #$55
+.c0a2	85 0c		sta $0c		        sta zpt
+.c0a4	64 0c		stz $0c		        stz zpt         ; overwrite it
+.c0a6	a5 0c		lda $0c		        lda zpt         ; we should get $aa
+.c0a8	c9 aa		cmp #$aa	        cmp #$aa
+.c0aa	d0 fe		bne $c0aa	        bne *           ;failed not equal (non zero)
+.c0ac	d4 0c		cpz $0c		        cpz zpt         ; check of  CPZ zp
+.c0ae	d0 fe		bne $c0ae	        bne *           ;failed not equal (non zero)
+
+					        ; test STZ abs gives #$aa
+.c0b0	a9 55		lda #$55	        lda #$55
+.c0b2	8d 05 02	sta $0205	        sta abst
+.c0b5	9c 05 02	stz $0205	        stz abst        ; overwrite it
+.c0b8	ad 05 02	lda $0205	        lda abst        ; we should get $aa
+.c0bb	c9 aa		cmp #$aa	        cmp #$aa
+.c0bd	d0 fe		bne $c0bd	        bne *           ;failed not equal (non zero)
+.c0bf	dc 05 02	cpz $0205	        cpz abst        ; check of CPZ abs
+
+					        ; test STZ zp,x works
+.c0c2	a9 01		lda #$01	        lda #1
+.c0c4	aa		tax		        tax
+.c0c5	85 0c		sta $0c		        sta zpt+0
+.c0c7	85 0d		sta $0d		        sta zpt+1
+.c0c9	85 0e		sta $0e		        sta zpt+2
+.c0cb	74 0c		stz $0c,x	        stz zpt,x
+.c0cd	a5 0d		lda $0d		        lda zpt+1
+.c0cf	c9 aa		cmp #$aa	        cmp #$aa
+.c0d1	d0 fe		bne $c0d1	        bne *           ;failed not equal (non zero)
+
+					        ; test STZ abs,x works
+.c0d3	8d 05 02	sta $0205	        sta abst+0
+.c0d6	8d 06 02	sta $0206	        sta abst+1
+.c0d9	8d 07 02	sta $0207	        sta abst+2
+.c0dc	9e 05 02	stz $0205,x	        stz abst,x
+.c0df	ad 06 02	lda $0206	        lda abst+1
+.c0e2	c9 aa		cmp #$aa	        cmp #$aa
+
+.c0e4	c2 aa		cpz #$aa	        cpz #$aa        ; verify that Z contains #$aa
+.c0e6	d0 fe		bne $c0e6	        bne *           ;failed not equal (non zero)
+
+					        ; Clear memory
+.c0e8	a3 00		ldz #$00	        ldz #$0
+.c0ea	64 0c		stz $0c		        stz zpt+0
+.c0ec	64 0d		stz $0d		        stz zpt+1
+.c0ee	64 0e		stz $0e		        stz zpt+2
+.c0f0	9c 05 02	stz $0205	        stz abst+0
+.c0f3	8d 06 02	sta $0206	        sta abst+1
+.c0f6	8d 07 02	sta $0207	        sta abst+2
+
+					        ; Quick tests for TAZ / TZA (flags not yet checked)
+
+.c0f9	a9 99		lda #$99	        lda #$99
+.c0fb	4b		taz		        taz
+.c0fc	c2 99		cpz #$99	        cpz #$99
+.c0fe	d0 fe		bne $c0fe	        bne *           ;failed not equal (non zero)
+
+.c100	a3 44		ldz #$44	        ldz #$44
+.c102	6b		tza		        tza
+.c103	c9 44		cmp #$44	        cmp #$44
+.c105	d0 fe		bne $c105	        bne *           ;failed not equal (non zero)
+
+					;testing stack operations PHZ PLZ
+.c107	a9 99		lda #$99	        lda #$99        ;protect a
+.c109	a2 ff		ldx #$ff	        ldx #$ff        ;initialize stack
+.c10b	9a		txs		        txs
+.c10c	a3 55		ldz #$55	        ldz #$55
+.c10e	db		phz		        phz
+.c10f	a3 aa		ldz #$aa	        ldz #$aa
+.c111	db		phz		        phz
+.c112	dc fe 01	cpz $01fe	        cpz $1fe        ;on stack ?
+.c115	d0 fe		bne $c115	        bne *           ;failed not equal (non zero)
+.c117	ba		tsx		        tsx
+.c118	e0 fd		cpx #$fd	        cpx #$fd        ;sp decremented?
+.c11a	d0 fe		bne $c11a	        bne *           ;failed not equal (non zero)
+.c11c	fb		plz		        plz
+.c11d	c2 aa		cpz #$aa	        cpz #$aa        ;successful retreived from stack?
+.c11f	d0 fe		bne $c11f	        bne *           ;failed not equal (non zero)
+.c121	fb		plz		        plz
+.c122	c2 55		cpz #$55	        cpz #$55
+.c124	d0 fe		bne $c124	        bne *           ;failed not equal (non zero)
+.c126	dc ff 01	cpz $01ff	        cpz $1ff        ;remains on stack?
+.c129	d0 fe		bne $c129	        bne *           ;failed not equal (non zero)
+.c12b	ba		tsx		        tsx
+.c12c	e0 ff		cpx #$ff	        cpx #$ff        ;sp incremented?
+.c12e	d0 fe		bne $c12e	        bne *           ;failed not equal (non zero)
+.c130	c9 99		cmp #$99	        cmp #$99        ;unchanged?
+.c132	d0 fe		bne $c132	        bne *           ;failed not equal (non zero)
+
+					; test PHZ does not alter flags or Z but PLZ does
+.c134	a2 55		ldx #$55	        ldx #$55        ;protect x
+.c136	a0 aa		ldy #$aa	        ldy #$aa        ;protect y
+.c138	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c13a	48		pha		            pha         ;use stack to load status
+.c13b	a3 01		ldz #$01	            ldz #<1     ;precharge index x
+.c13d	28		plp		            plp
+.c13e	db		phz		        phz
+.c13f	08		php		            php         ;save flags
+.c140	c2 01		cpz #$01	            cpz #<1     ;test result
+.c142	d0 fe		bne $c142	        bne *           ;failed not equal (non zero)
+.c144	68		pla		            pla         ;load status
+.c145	48		pha		            pha
+.c146	c9 ff		cmp #$ff	            cmp #($ff|fao)&m8    ;expected flags + always on bits
+.c148	d0 fe		bne $c148	        bne *           ;failed not equal (non zero)
+.c14a	28		plp		            plp         ;restore status
+.c14b	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c14d	48		pha		            pha         ;use stack to load status
+.c14e	a3 00		ldz #$00	            ldz #<0     ;precharge index x
+.c150	28		plp		            plp
+.c151	db		phz		        phz
+.c152	08		php		            php         ;save flags
+.c153	c2 00		cpz #$00	            cpz #<0     ;test result
+.c155	d0 fe		bne $c155	        bne *           ;failed not equal (non zero)
+.c157	68		pla		            pla         ;load status
+.c158	48		pha		            pha
+.c159	c9 30		cmp #$30	            cmp #(0|fao)&m8    ;expected flags + always on bits
+.c15b	d0 fe		bne $c15b	        bne *           ;failed not equal (non zero)
+.c15d	28		plp		            plp         ;restore status
+.c15e	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c160	48		pha		            pha         ;use stack to load status
+.c161	a3 ff		ldz #$ff	            ldz #<$ff     ;precharge index x
+.c163	28		plp		            plp
+.c164	db		phz		        phz
+.c165	08		php		            php         ;save flags
+.c166	c2 ff		cpz #$ff	            cpz #<$ff     ;test result
+.c168	d0 fe		bne $c168	        bne *           ;failed not equal (non zero)
+.c16a	68		pla		            pla         ;load status
+.c16b	48		pha		            pha
+.c16c	c9 ff		cmp #$ff	            cmp #($ff|fao)&m8    ;expected flags + always on bits
+.c16e	d0 fe		bne $c16e	        bne *           ;failed not equal (non zero)
+.c170	28		plp		            plp         ;restore status
+.c171	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c173	48		pha		            pha         ;use stack to load status
+.c174	a3 01		ldz #$01	            ldz #<1     ;precharge index x
+.c176	28		plp		            plp
+.c177	db		phz		        phz
+.c178	08		php		            php         ;save flags
+.c179	c2 01		cpz #$01	            cpz #<1     ;test result
+.c17b	d0 fe		bne $c17b	        bne *           ;failed not equal (non zero)
+.c17d	68		pla		            pla         ;load status
+.c17e	48		pha		            pha
+.c17f	c9 30		cmp #$30	            cmp #(0|fao)&m8    ;expected flags + always on bits
+.c181	d0 fe		bne $c181	        bne *           ;failed not equal (non zero)
+.c183	28		plp		            plp         ;restore status
+.c184	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c186	48		pha		            pha         ;use stack to load status
+.c187	a3 00		ldz #$00	            ldz #<0     ;precharge index x
+.c189	28		plp		            plp
+.c18a	db		phz		        phz
+.c18b	08		php		            php         ;save flags
+.c18c	c2 00		cpz #$00	            cpz #<0     ;test result
+.c18e	d0 fe		bne $c18e	        bne *           ;failed not equal (non zero)
+.c190	68		pla		            pla         ;load status
+.c191	48		pha		            pha
+.c192	c9 ff		cmp #$ff	            cmp #($ff|fao)&m8    ;expected flags + always on bits
+.c194	d0 fe		bne $c194	        bne *           ;failed not equal (non zero)
+.c196	28		plp		            plp         ;restore status
+.c197	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c199	48		pha		            pha         ;use stack to load status
+.c19a	a3 ff		ldz #$ff	            ldz #<$ff     ;precharge index x
+.c19c	28		plp		            plp
+.c19d	db		phz		        phz
+.c19e	08		php		            php         ;save flags
+.c19f	c2 ff		cpz #$ff	            cpz #<$ff     ;test result
+.c1a1	d0 fe		bne $c1a1	        bne *           ;failed not equal (non zero)
+.c1a3	68		pla		            pla         ;load status
+.c1a4	48		pha		            pha
+.c1a5	c9 30		cmp #$30	            cmp #(0|fao)&m8    ;expected flags + always on bits
+.c1a7	d0 fe		bne $c1a7	        bne *           ;failed not equal (non zero)
+.c1a9	28		plp		            plp         ;restore status
+.c1aa	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c1ac	48		pha		            pha         ;use stack to load status
+.c1ad	a3 00		ldz #$00	            ldz #<0     ;precharge index x
+.c1af	28		plp		            plp
+.c1b0	fb		plz		        plz
+.c1b1	08		php		            php         ;save flags
+.c1b2	c2 ff		cpz #$ff	            cpz #<$ff     ;test result
+.c1b4	d0 fe		bne $c1b4	        bne *           ;failed not equal (non zero)
+.c1b6	68		pla		            pla         ;load status
+.c1b7	48		pha		            pha
+.c1b8	c9 fd		cmp #$fd	            cmp #($ff-zero|fao)&m8    ;expected flags + always on bits
+.c1ba	d0 fe		bne $c1ba	        bne *           ;failed not equal (non zero)
+.c1bc	28		plp		            plp         ;restore status
+.c1bd	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c1bf	48		pha		            pha         ;use stack to load status
+.c1c0	a3 ff		ldz #$ff	            ldz #<$ff     ;precharge index x
+.c1c2	28		plp		            plp
+.c1c3	fb		plz		        plz
+.c1c4	08		php		            php         ;save flags
+.c1c5	c2 00		cpz #$00	            cpz #<0     ;test result
+.c1c7	d0 fe		bne $c1c7	        bne *           ;failed not equal (non zero)
+.c1c9	68		pla		            pla         ;load status
+.c1ca	48		pha		            pha
+.c1cb	c9 32		cmp #$32	            cmp #(zero|fao)&m8    ;expected flags + always on bits
+.c1cd	d0 fe		bne $c1cd	        bne *           ;failed not equal (non zero)
+.c1cf	28		plp		            plp         ;restore status
+.c1d0	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c1d2	48		pha		            pha         ;use stack to load status
+.c1d3	a3 fe		ldz #$fe	            ldz #<$fe     ;precharge index x
+.c1d5	28		plp		            plp
+.c1d6	fb		plz		        plz
+.c1d7	08		php		            php         ;save flags
+.c1d8	c2 01		cpz #$01	            cpz #<1     ;test result
+.c1da	d0 fe		bne $c1da	        bne *           ;failed not equal (non zero)
+.c1dc	68		pla		            pla         ;load status
+.c1dd	48		pha		            pha
+.c1de	c9 7d		cmp #$7d	            cmp #($ff-zero-minus|fao)&m8    ;expected flags + always on bits
+.c1e0	d0 fe		bne $c1e0	        bne *           ;failed not equal (non zero)
+.c1e2	28		plp		            plp         ;restore status
+.c1e3	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c1e5	48		pha		            pha         ;use stack to load status
+.c1e6	a3 00		ldz #$00	            ldz #<0     ;precharge index x
+.c1e8	28		plp		            plp
+.c1e9	fb		plz		        plz
+.c1ea	08		php		            php         ;save flags
+.c1eb	c2 ff		cpz #$ff	            cpz #<$ff     ;test result
+.c1ed	d0 fe		bne $c1ed	        bne *           ;failed not equal (non zero)
+.c1ef	68		pla		            pla         ;load status
+.c1f0	48		pha		            pha
+.c1f1	c9 b0		cmp #$b0	            cmp #(minus|fao)&m8    ;expected flags + always on bits
+.c1f3	d0 fe		bne $c1f3	        bne *           ;failed not equal (non zero)
+.c1f5	28		plp		            plp         ;restore status
+.c1f6	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c1f8	48		pha		            pha         ;use stack to load status
+.c1f9	a3 ff		ldz #$ff	            ldz #<$ff     ;precharge index x
+.c1fb	28		plp		            plp
+.c1fc	fb		plz		        plz
+.c1fd	08		php		            php         ;save flags
+.c1fe	c2 00		cpz #$00	            cpz #<0     ;test result
+.c200	d0 fe		bne $c200	        bne *           ;failed not equal (non zero)
+.c202	68		pla		            pla         ;load status
+.c203	48		pha		            pha
+.c204	c9 7f		cmp #$7f	            cmp #($ff-minus|fao)&m8    ;expected flags + always on bits
+.c206	d0 fe		bne $c206	        bne *           ;failed not equal (non zero)
+.c208	28		plp		            plp         ;restore status
+.c209	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c20b	48		pha		            pha         ;use stack to load status
+.c20c	a3 fe		ldz #$fe	            ldz #<$fe     ;precharge index x
+.c20e	28		plp		            plp
+.c20f	fb		plz		        plz
+.c210	08		php		            php         ;save flags
+.c211	c2 01		cpz #$01	            cpz #<1     ;test result
+.c213	d0 fe		bne $c213	        bne *           ;failed not equal (non zero)
+.c215	68		pla		            pla         ;load status
+.c216	48		pha		            pha
+.c217	c9 30		cmp #$30	            cmp #(0|fao)&m8    ;expected flags + always on bits
+.c219	d0 fe		bne $c219	        bne *           ;failed not equal (non zero)
+.c21b	28		plp		            plp         ;restore status
+.c21c	c0 aa		cpy #$aa	        cpy #$aa        ;Y unchanged
+.c21e	e0 55		cpx #$55	        cpx #$55        ;X unchanged
+.c220	d0 fe		bne $c220	        bne *           ;failed not equal (non zero)
+
+					; Quick check that (zp) is now really (zp),z
+.c222	a9 55		lda #$55	        lda #$55        ; set up test area
+.c224	8d 05 02	sta $0205	        sta ada2
+
+.c227	a3 ff		ldz #$ff	        ldz #$ff        ; set up indirect offset
+.c229	b2 56		lda ($56),z	        lda (adiy2),z   ; load value
+.c22b	c9 55		cmp #$55	        cmp #$55        ; compare to expected
+.c22d	d0 fe		bne $c22d	        bne *           ;failed not equal (non zero)
+
+.c22f	a3 00		ldz #$00	        ldz #0          ; Restore Z to default of 0
+
+.c231	ad 02 02	lda $0202	            lda test_case   ;previous test
+.c234	c9 02		cmp #$02	            cmp #test_num
+.c236	d0 fe		bne $c236	        bne *           ;failed not equal (non zero)
+=3					test_num    .var test_num + 1
+.c238	a9 03		lda #$03	            lda #test_num   ;*** next tests' number
+.c23a	8d 02 02	sta $0202	            sta test_case
+					            ;check_ram       ;uncomment to find altered RAM after each test
+
+					; branch around 16-bit branch landing area
+.c23d	80 24		bra $c263	        bra stacktests
+
+					; Landing area for forward 16-bit branches.
+
+.c23f	c8		iny		        iny
+.c240	c8		iny		        iny
+.c241	c8		iny		braf0   iny             ; We should land here
+.c242	c8		iny		        iny
+.c243	c8		iny		        iny
+.c244	c0 03		cpy #$03	        cpy #$03
+.c246	d0 fe		bne $c246	        bne *           ;failed not equal (non zero)
+
+.c248	f3 22 fe	beq $c06c	        beq   brab0     ; Now branch back...
+
+.c24b	c8		iny		        iny
+.c24c	c8		iny		        iny
+.c24d	c8		iny		beqf0   iny             ; We should land here
+.c24e	c8		iny		        iny
+.c24f	c8		iny		        iny
+.c250	c0 03		cpy #$03	        cpy #$03
+.c252	d0 fe		bne $c252	        bne *           ;failed not equal (non zero)
+
+.c254	f3 25 fe	beq $c07b	        beq   beqb0     ; Now branch back...
+
+.c257	c8		iny		        iny
+.c258	c8		iny		        iny
+.c259	c8		iny		bsrf0   iny
+.c25a	c8		iny		        iny
+.c25b	c8		iny		        iny
+.c25c	c0 03		cpy #$03	        cpy #$03
+.c25e	d0 fe		bne $c25e	        bne *           ;failed not equal (non zero)
+.c260	60		rts		        rts
+
+.c261	62 02		rts #$02	rtnimm  rtn #2
+
+.c263					stacktests
+
+					; Test phw variants
+.c263	f4 55 aa	phw #$aa55	        phw #$aa55      ; Should push $aa then $55
+.c266	68		pla		        pla
+.c267	c9 aa		cmp #$aa	        cmp #$aa
+.c269	d0 fe		bne $c269	        bne *           ;failed not equal (non zero)
+.c26b	68		pla		        pla
+.c26c	c9 55		cmp #$55	        cmp #$55
+.c26e	d0 fe		bne $c26e	        bne *           ;failed not equal (non zero)
+
+.c270	fc 10 02	phw $0210	        phw abs1
+.c273	68		pla		        pla
+.c274	cd 11 02	cmp $0211	        cmp abs1+1
+.c277	d0 fe		bne $c277	        bne *           ;failed not equal (non zero)
+.c279	68		pla		        pla
+.c27a	cd 10 02	cmp $0210	        cmp abs1+0
+.c27d	d0 fe		bne $c27d	        bne *           ;failed not equal (non zero)
+
+					; Test rtn #imm
+.c27f	f4 55 aa	phw #$aa55	        phw #$aa55
+.c282	20 61 c2	jsr $c261	        jsr rtnimm
+.c285	ba		tsx		        tsx
+.c286	e0 ff		cpx #$ff	        cpx #$ff        ; stack should be back here now
+.c288	d0 fe		bne $c288	        bne *           ;failed not equal (non zero)
+
+					; Extended stack mode - Verify TYS lets us move stack to new page
+
+.c28a	a0 ff		ldy #$ff	        ldy #$ff        ; set Y to different value
+.c28c	0b		tsy		        tsy
+.c28d	c0 01		cpy #$01	        cpy #$01        ; This should now be #$01 by default
+.c28f	d0 fe		bne $c28f	        bne *           ;failed not equal (non zero)
+.c291	c8		iny		        iny             ; move stack up a page (to #$02)
+.c292	a2 ff		ldx #$ff	        ldx #$ff
+.c294	2b		tys		        tys
+.c295	9a		txs		        txs             ; init stack to $02ff
+
+					        ; zero stack area
+.c296	a9 00		lda #$00	        lda #$00
+.c298	8d ff 02	sta $02ff	        sta $2ff
+.c29b	8d fe 02	sta $02fe	        sta $2fe
+
+.c29e	a0 55		ldy #$55	        ldy #$55
+.c2a0	5a		phy		        phy
+.c2a1	cc ff 02	cpy $02ff	        cpy $2ff        ; on stack?
+.c2a4	d0 fe		bne $c2a4	        bne *           ;failed not equal (non zero)
+.c2a6	a0 aa		ldy #$aa	        ldy #$aa
+.c2a8	5a		phy		        phy
+.c2a9	cc fe 02	cpy $02fe	        cpy $2fe        ; on stack?
+.c2ac	d0 fe		bne $c2ac	        bne *           ;failed not equal (non zero)
+.c2ae	a0 99		ldy #$99	        ldy #$99
+.c2b0	7a		ply		        ply
+.c2b1	c0 aa		cpy #$aa	        cpy #$aa        ; got back ok?
+.c2b3	d0 fe		bne $c2b3	        bne *           ;failed not equal (non zero)
+.c2b5	7a		ply		        ply
+.c2b6	c0 55		cpy #$55	        cpy #$55        ; got back ok?
+.c2b8	d0 fe		bne $c2b8	        bne *           ;failed not equal (non zero)
+
+.c2ba	0b		tsy		        tsy
+.c2bb	c0 02		cpy #$02	        cpy #$02        ; got back stack upper byte?
+.c2bd	d0 fe		bne $c2bd	        bne *           ;failed not equal (non zero)
+
+					; Extended stack mode - Verify that with E bit set (the default) that the stack
+					;                       still wraps at both ends.
+
+.c2bf	a0 01		ldy #$01	        ldy #$01        ; set up stack again
+.c2c1	a2 ff		ldx #$ff	        ldx #$ff
+.c2c3	2b		tys		        tys
+.c2c4	9a		txs		        txs
+
+.c2c5	08		php		        php
+.c2c6	68		pla		        pla
+.c2c7	29 20		and #$20	        and #$20        ; verify that 'E' (previously reserved) reads back 1
+.c2c9	f0 fe		beq $c2c9	        beq *           ;failed equal (zero)
+
+.c2cb	a9 00		lda #$00	        lda #$00        ; force processor status to 0...
+.c2cd	48		pha		        pha
+.c2ce	28		plp		        plp
+.c2cf	08		php		        php
+.c2d0	68		pla		        pla
+.c2d1	29 20		and #$20	        and #$20        ; verify that 'E' (previously reserved) still reads back 1
+.c2d3	f0 fe		beq $c2d3	        beq *           ;failed equal (zero)
+
+.c2d5	02		cle		        cle
+.c2d6	08		php		        php
+.c2d7	68		pla		        pla
+.c2d8	29 20		and #$20	        and #$20        ; verify that 'E' (previously reserved) now reads back 0
+.c2da	d0 fe		bne $c2da	        bne *           ;failed not equal (non zero)
+
+.c2dc	fa		plx		        plx             ; pop bogus value off the stack (should wrap from $01ff to $0200)
+.c2dd	0b		tsy		        tsy
+.c2de	ba		tsx		        tsx
+.c2df	c0 02		cpy #$02	        cpy #$02        ; verify stack wrapped
+.c2e1	d0 fe		bne $c2e1	        bne *           ;failed not equal (non zero)
+.c2e3	e0 00		cpx #$00	        cpx #$00
+.c2e5	d0 fe		bne $c2e5	        bne *           ;failed not equal (non zero)
+
+.c2e7	a9 00		lda #$00	        lda #$00
+.c2e9	8d 00 02	sta $0200	        sta $200
+.c2ec	a9 99		lda #$99	        lda #$99
+.c2ee	48		pha		        pha
+.c2ef	cd 00 02	cmp $0200	        cmp $200        ; stack written as expected?
+.c2f2	d0 fe		bne $c2f2	        bne *           ;failed not equal (non zero)
+
+.c2f4	0b		tsy		        tsy
+.c2f5	ba		tsx		        tsx
+.c2f6	c0 01		cpy #$01	        cpy #$01        ; verify stack wrapped
+.c2f8	d0 fe		bne $c2f8	        bne *           ;failed not equal (non zero)
+.c2fa	e0 ff		cpx #$ff	        cpx #$ff
+.c2fc	d0 fe		bne $c2fc	        bne *           ;failed not equal (non zero)
+
+.c2fe	a9 ff		lda #$ff	        lda #$ff
+.c300	48		pha		        pha
+.c301	28		plp		        plp
+.c302	68		pla		        pla
+.c303	29 20		and #$20	        and #$20        ; verify that 'E' (previously reserved) still reads back 0
+.c305	d0 fe		bne $c305	        bne *           ;failed not equal (non zero)
+
+.c307	03		see		        see             ; re-set stack extend disable bit
+
+.c308	08		php		        php
+.c309	68		pla		        pla
+.c30a	29 20		and #$20	        and #$20        ; verify that 'E' (previously reserved) reads back 1 again
+.c30c	f0 fe		beq $c30c	        beq *           ;failed equal (zero)
+
+.c30e	a0 01		ldy #$01	        ldy #$01        ; restore stack setup
+.c310	a2 ff		ldx #$ff	        ldx #$ff
+.c312	2b		tys		        tys
+.c313	9a		txs		        txs
+
+.c314	ad 02 02	lda $0202	            lda test_case   ;previous test
+.c317	c9 03		cmp #$03	            cmp #test_num
+.c319	d0 fe		bne $c319	        bne *           ;failed not equal (non zero)
+=4					test_num    .var test_num + 1
+.c31b	a9 04		lda #$04	            lda #test_num   ;*** next tests' number
+.c31d	8d 02 02	sta $0202	            sta test_case
+					            ;check_ram       ;uncomment to find altered RAM after each test
+
+					; Base page register test - Verify TAB/TBA can save/restore as expected and that at least one
+					; zero page based addressing mode is affected by moving zero page around.
+
+.c320	7b		tba		        tba
+.c321	d0 fe		bne $c321	        bne *           ;failed not equal (non zero)
+
+.c323	a9 03		lda #$03	        lda #$03
+.c325	5b		tab		        tab
+.c326	a9 99		lda #$99	        lda #$99        ; Trash A
+.c328	7b		tba		        tba
+.c329	c9 03		cmp #$03	        cmp #$03        ; make sure it's as expected again
+.c32b	d0 fe		bne $c32b	        bne *           ;failed not equal (non zero)
+
+					        ; quick zero page write test
+.c32d	a9 55		lda #$55	        lda #$55
+.c32f	8d 0c 03	sta $030c	        sta zpt+$300    ; trash test location
+
+.c332	a9 99		lda #$99	        lda #$99
+.c334	85 0c		sta $0c		        sta zpt         ; store to 'zero page' location
+.c336	cd 0c 03	cmp $030c	        cmp zpt+$300    ; verify it landed in expected place
+.c339	d0 fe		bne $c339	        bne *           ;failed not equal (non zero)
+
+.c33b	a9 00		lda #$00	        lda #$00
+.c33d	5b		tab		        tab             ; put zero page back
+
+.c33e	ad 02 02	lda $0202	            lda test_case   ;previous test
+.c341	c9 04		cmp #$04	            cmp #test_num
+.c343	d0 fe		bne $c343	        bne *           ;failed not equal (non zero)
+=5					test_num    .var test_num + 1
+.c345	a9 05		lda #$05	            lda #test_num   ;*** next tests' number
+.c347	8d 02 02	sta $0202	            sta test_case
+					            ;check_ram       ;uncomment to find altered RAM after each test
+
+					; Quick smoke check of NEG.
+.c34a	a9 00		lda #$00	        lda #$00
+.c34c	42		neg a		        neg
+.c34d	d0 fe		bne $c34d	        bne *           ;failed not equal (non zero)
+.c34f	30 fe		bmi $c34f	        bmi *           ;failed minus (bit 7 set)
+.c351	c9 00		cmp #$00	        cmp #$00
+.c353	d0 fe		bne $c353	        bne *           ;failed not equal (non zero)
+.c355	a9 01		lda #$01	        lda #$01
+.c357	42		neg a		        neg
+.c358	f0 fe		beq $c358	        beq *           ;failed equal (zero)
+.c35a	10 fe		bpl $c35a	        bpl *           ;failed plus (bit 7 clear)
+.c35c	c9 ff		cmp #$ff	        cmp #$ff
+.c35e	d0 fe		bne $c35e	        bne *           ;failed not equal (non zero)
+.c360	a9 80		lda #$80	        lda #$80
+.c362	42		neg a		        neg
+.c363	10 fe		bpl $c363	        bpl *           ;failed plus (bit 7 clear)
+.c365	f0 fe		beq $c365	        beq *           ;failed equal (zero)
+.c367	c9 80		cmp #$80	        cmp #$80
+.c369	d0 fe		bne $c369	        bne *           ;failed not equal (non zero)
+
+.c36b	ad 02 02	lda $0202	            lda test_case   ;previous test
+.c36e	c9 05		cmp #$05	            cmp #test_num
+.c370	d0 fe		bne $c370	        bne *           ;failed not equal (non zero)
+=6					test_num    .var test_num + 1
+.c372	a9 06		lda #$06	            lda #test_num   ;*** next tests' number
+.c374	8d 02 02	sta $0202	            sta test_case
+					            ;check_ram       ;uncomment to find altered RAM after each test
+
+					; Quick sanity test of ASR
+.c377	a9 7f		lda #$7f	        lda #$7f
+.c379	38		sec		        sec           ; set carry bit
+.c37a	43		asr a		        asr           ; arithmetic shift right shouldn't bring in carry bit
+.c37b	90 fe		bcc $c37b	        bcc *           ;failed carry clear
+.c37d	c9 3f		cmp #$3f	        cmp #$3f      ; top bit should have remained zero
+.c37f	d0 fe		bne $c37f	        bne *           ;failed not equal (non zero)
+.c381	a9 80		lda #$80	        lda #$80
+.c383	43		asr a		        asr
+.c384	b0 fe		bcs $c384	        bcs *           ;failed carry set
+.c386	c9 c0		cmp #$c0	        cmp #$c0
+.c388	d0 fe		bne $c388	        bne *           ;failed not equal (non zero)
+.c38a	43		asr a		        asr           ; $e0
+.c38b	43		asr a		        asr           ; $f0
+.c38c	b0 fe		bcs $c38c	        bcs *           ;failed carry set
+.c38e	c9 f0		cmp #$f0	        cmp #$f0
+.c390	d0 fe		bne $c390	        bne *           ;failed not equal (non zero)
+.c392	43		asr a		        asr
+.c393	43		asr a		        asr
+.c394	43		asr a		        asr
+.c395	43		asr a		        asr
+.c396	b0 fe		bcs $c396	        bcs *           ;failed carry set
+.c398	c9 ff		cmp #$ff	        cmp #$ff
+.c39a	d0 fe		bne $c39a	        bne *           ;failed not equal (non zero)
+.c39c	43		asr a		        asr
+.c39d	90 fe		bcc $c39d	        bcc *           ;failed carry clear
+
+					; Do the same for ASR zp and ASR zp,x
+.c39f	a9 7f		lda #$7f	        lda #$7f
+.c3a1	85 0c		sta $0c		        sta zpt
+.c3a3	38		sec		        sec
+.c3a4	44 0c		asr $0c		        asr zpt
+.c3a6	90 fe		bcc $c3a6	        bcc *           ;failed carry clear
+.c3a8	a5 0c		lda $0c		        lda zpt
+.c3aa	c9 3f		cmp #$3f	        cmp #$3f
+.c3ac	d0 fe		bne $c3ac	        bne *           ;failed not equal (non zero)
+
+.c3ae	a9 80		lda #$80	        lda #$80
+.c3b0	a2 01		ldx #$01	        ldx #$1
+.c3b2	95 0c		sta $0c,x	        sta zpt,x
+.c3b4	38		sec		        sec
+.c3b5	54 0c		asr $0c,x	        asr zpt,x
+.c3b7	b0 fe		bcs $c3b7	        bcs *           ;failed carry set
+.c3b9	b5 0c		lda $0c,x	        lda zpt,x
+.c3bb	c9 c0		cmp #$c0	        cmp #$c0
+.c3bd	d0 fe		bne $c3bd	        bne *           ;failed not equal (non zero)
+
+.c3bf	ad 02 02	lda $0202	            lda test_case   ;previous test
+.c3c2	c9 06		cmp #$06	            cmp #test_num
+.c3c4	d0 fe		bne $c3c4	        bne *           ;failed not equal (non zero)
+=7					test_num    .var test_num + 1
+.c3c6	a9 07		lda #$07	            lda #test_num   ;*** next tests' number
+.c3c8	8d 02 02	sta $0202	            sta test_case
+					            ;check_ram       ;uncomment to find altered RAM after each test
+
+					; test ASW abs (this is a shift left)
+.c3cb	a9 80		lda #$80	        lda #$80
+.c3cd	8d 05 02	sta $0205	        sta abst+0
+.c3d0	a9 00		lda #$00	        lda #$00
+.c3d2	8d 06 02	sta $0206	        sta abst+1
+.c3d5	38		sec		        sec
+.c3d6	cb 05 02	asw $0205	        asw abst    ; should not shift in carry
+.c3d9	f0 fe		beq $c3d9	        beq *           ;failed equal (zero)
+.c3db	b0 fe		bcs $c3db	        bcs *           ;failed carry set
+.c3dd	ad 05 02	lda $0205	        lda abst+0
+.c3e0	d0 fe		bne $c3e0	        bne *           ;failed not equal (non zero)
+.c3e2	ad 06 02	lda $0206	        lda abst+1
+.c3e5	f0 fe		beq $c3e5	        beq *           ;failed equal (zero)
+.c3e7	c9 01		cmp #$01	        cmp #$01
+.c3e9	d0 fe		bne $c3e9	        bne *           ;failed not equal (non zero)
+
+					        ; Check that zero flag is not set if upper byte is zero, nor is
+					        ; negative flag set if lower byte winds up with high bit set
+
+.c3eb	a9 40		lda #$40	        lda #$40
+.c3ed	8d 05 02	sta $0205	        sta abst+0
+.c3f0	a9 00		lda #$00	        lda #$00
+.c3f2	8d 06 02	sta $0206	        sta abst+1
+.c3f5	38		sec		        sec
+.c3f6	cb 05 02	asw $0205	        asw abst
+.c3f9	f0 fe		beq $c3f9	        beq *           ;failed equal (zero)
+.c3fb	30 fe		bmi $c3fb	        bmi *           ;failed minus (bit 7 set)
+
+					        ; Check that zero flag is set properly if both bytes wind up zero
+.c3fd	a9 00		lda #$00	        lda #$00
+.c3ff	8d 05 02	sta $0205	        sta abst+0
+.c402	a9 80		lda #$80	        lda #$80
+.c404	8d 06 02	sta $0206	        sta abst+1
+.c407	38		sec		        sec
+.c408	cb 05 02	asw $0205	        asw abst
+.c40b	d0 fe		bne $c40b	        bne *           ;failed not equal (non zero)
+.c40d	90 fe		bcc $c40d	        bcc *           ;failed carry clear
+
+					; test ROW abs (this is a shift left)
+.c40f	a9 80		lda #$80	        lda #$80
+.c411	8d 05 02	sta $0205	        sta abst+0
+.c414	a9 00		lda #$00	        lda #$00
+.c416	8d 06 02	sta $0206	        sta abst+1
+.c419	38		sec		        sec
+.c41a	eb 05 02	row $0205	        row abst    ; should not shift in carry
+.c41d	f0 fe		beq $c41d	        beq *           ;failed equal (zero)
+.c41f	b0 fe		bcs $c41f	        bcs *           ;failed carry set
+.c421	ad 05 02	lda $0205	        lda abst+0
+.c424	c9 01		cmp #$01	        cmp #$01    ; verify carry shifted in
+.c426	d0 fe		bne $c426	        bne *           ;failed not equal (non zero)
+.c428	ad 06 02	lda $0206	        lda abst+1
+.c42b	f0 fe		beq $c42b	        beq *           ;failed equal (zero)
+.c42d	c9 01		cmp #$01	        cmp #$01
+.c42f	d0 fe		bne $c42f	        bne *           ;failed not equal (non zero)
+
+					        ; Check that zero flag is not set if upper byte is zero, nor is
+					        ; negative flag set if lower byte winds up with high bit set
+
+.c431	a9 40		lda #$40	        lda #$40
+.c433	8d 05 02	sta $0205	        sta abst+0
+.c436	a9 00		lda #$00	        lda #$00
+.c438	8d 06 02	sta $0206	        sta abst+1
+.c43b	38		sec		        sec
+.c43c	eb 05 02	row $0205	        row abst
+.c43f	f0 fe		beq $c43f	        beq *           ;failed equal (zero)
+.c441	30 fe		bmi $c441	        bmi *           ;failed minus (bit 7 set)
+
+					        ; Check that zero flag is set properly if both bytes wind up zero
+.c443	a9 00		lda #$00	        lda #$00
+.c445	8d 05 02	sta $0205	        sta abst+0
+.c448	a9 80		lda #$80	        lda #$80
+.c44a	8d 06 02	sta $0206	        sta abst+1
+.c44d	18		clc		        clc
+.c44e	eb 05 02	row $0205	        row abst
+.c451	d0 fe		bne $c451	        bne *           ;failed not equal (non zero)
+.c453	90 fe		bcc $c453	        bcc *           ;failed carry clear
+
+.c455	ad 02 02	lda $0202	            lda test_case   ;previous test
+.c458	c9 07		cmp #$07	            cmp #test_num
+.c45a	d0 fe		bne $c45a	        bne *           ;failed not equal (non zero)
+=8					test_num    .var test_num + 1
+.c45c	a9 08		lda #$08	            lda #test_num   ;*** next tests' number
+.c45e	8d 02 02	sta $0202	            sta test_case
+					            ;check_ram       ;uncomment to find altered RAM after each test
+
+					; Quick test of sty abs,x and stx abs,y
+.c461	a0 fc		ldy #$fc	        ldy #$fc
+.c463	a9 01		lda #$01	        lda #$01
+.c465	8b 05 02	sty $0205,x	        sty abst,x
+.c468	cc 06 02	cpy $0206	        cpy abst+1
+.c46b	d0 fe		bne $c46b	        bne *           ;failed not equal (non zero)
+
+.c46d	a2 cf		ldx #$cf	        ldx #$cf
+.c46f	a0 01		ldy #$01	        ldy #$01
+.c471	9b 05 02	stx $0205,y	        stx abst,y
+.c474	ec 06 02	cpx $0206	        cpx abst+1
+.c477	d0 fe		bne $c477	        bne *           ;failed not equal (non zero)
+
+.c479	ad 02 02	lda $0202	            lda test_case   ;previous test
+.c47c	c9 08		cmp #$08	            cmp #test_num
+.c47e	d0 fe		bne $c47e	        bne *           ;failed not equal (non zero)
+=9					test_num    .var test_num + 1
+.c480	a9 09		lda #$09	            lda #test_num   ;*** next tests' number
+.c482	8d 02 02	sta $0202	            sta test_case
+					            ;check_ram       ;uncomment to find altered RAM after each test
+
+					; Quick test of ldz abs and ldz abs,x
+.c485	a9 bb		lda #$bb	        lda #$bb
+.c487	8d 05 02	sta $0205	        sta abst
+.c48a	ab 05 02	ldz $0205	        ldz abst
+.c48d	c2 bb		cpz #$bb	        cpz #$bb
+.c48f	d0 fe		bne $c48f	        bne *           ;failed not equal (non zero)
+
+.c491	a2 01		ldx #$01	        ldx #$01
+.c493	bb 05 02	ldz $0205,x	        ldz abst,x
+.c496	c2 cf		cpz #$cf	        cpz #$cf
+.c498	d0 fe		bne $c498	        bne *           ;failed not equal (non zero)
+
+.c49a	ad 02 02	lda $0202	            lda test_case   ;previous test
+.c49d	c9 09		cmp #$09	            cmp #test_num
+.c49f	d0 fe		bne $c49f	        bne *           ;failed not equal (non zero)
+=10					test_num    .var test_num + 1
+.c4a1	a9 0a		lda #$0a	            lda #test_num   ;*** next tests' number
+.c4a3	8d 02 02	sta $0202	            sta test_case
+					            ;check_ram       ;uncomment to find altered RAM after each test
+
+					; Test stack indirect indexed
+.c4a6	a5 27		lda $27		        lda ind1+3
+.c4a8	48		pha		        pha
+.c4a9	a5 26		lda $26		        lda ind1+2
+.c4ab	48		pha		        pha
+.c4ac	a5 25		lda $25		        lda ind1+1
+.c4ae	48		pha		        pha
+.c4af	a5 24		lda $24		        lda ind1+0
+.c4b1	48		pha		        pha
+.c4b2	a0 01		ldy #$01	        ldy #1
+.c4b4	e2 03		lda ($03,s),y	        lda (#$3,s),y     ; shoud load from 2nd stack word (abs1+1) and add 1, so abs1+2
+.c4b6	cd 12 02	cmp $0212	        cmp abs1+2
+.c4b9	d0 fe		bne $c4b9	        bne *           ;failed not equal (non zero)
+
+.c4bb	a5 35		lda $35		        lda indt+5
+.c4bd	48		pha		        pha
+.c4be	a5 34		lda $34		        lda indt+4        ; this will point at indt+2
+.c4c0	48		pha		        pha
+.c4c1	a5 31		lda $31		        lda indt+1
+.c4c3	48		pha		        pha
+.c4c4	a5 30		lda $30		        lda indt+0
+.c4c6	48		pha		        pha
+.c4c7	a9 44		lda #$44	        lda #$44
+.c4c9	82 03		sta ($03,s),y	        sta (#$3,s),y
+.c4cb	cd 08 02	cmp $0208	        cmp abst+3        ; should have landed here
+.c4ce	d0 fe		bne $c4ce	        bne *           ;failed not equal (non zero)
+
+.c4d0	a2 ff		ldx #$ff	        ldx #$ff          ; reset stack
+.c4d2	9a		txs		        txs
+
+.c4d3	ad 02 02	lda $0202	            lda test_case   ;previous test
+.c4d6	c9 0a		cmp #$0a	            cmp #test_num
+.c4d8	d0 fe		bne $c4d8	        bne *           ;failed not equal (non zero)
+=11					test_num    .var test_num + 1
+.c4da	a9 0b		lda #$0b	            lda #test_num   ;*** next tests' number
+.c4dc	8d 02 02	sta $0202	            sta test_case
+					            ;check_ram       ;uncomment to find altered RAM after each test
+
+					; testing Z increment/decrement INZ & DEZ
+
+.c4df	a2 ac		ldx #$ac	        ldx #$ac    ;protect x & y
+.c4e1	a0 dc		ldy #$dc	        ldy #$dc
+.c4e3	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c4e5	48		pha		            pha         ;use stack to load status
+.c4e6	a3 fe		ldz #$fe	            ldz #<$fe     ;precharge index x
+.c4e8	28		plp		            plp
+.c4e9	1b		inz		        inz             ;ff
+.c4ea	08		php		            php         ;save flags
+.c4eb	c2 ff		cpz #$ff	            cpz #<$ff     ;test result
+.c4ed	d0 fe		bne $c4ed	        bne *           ;failed not equal (non zero)
+.c4ef	68		pla		            pla         ;load status
+.c4f0	48		pha		            pha
+.c4f1	c9 fd		cmp #$fd	            cmp #($ff-zero|fao)&m8    ;expected flags + always on bits
+.c4f3	d0 fe		bne $c4f3	        bne *           ;failed not equal (non zero)
+.c4f5	28		plp		            plp         ;restore status
+.c4f6	1b		inz		        inz            ;00
+.c4f7	08		php		            php         ;save flags
+.c4f8	c2 00		cpz #$00	            cpz #<0     ;test result
+.c4fa	d0 fe		bne $c4fa	        bne *           ;failed not equal (non zero)
+.c4fc	68		pla		            pla         ;load status
+.c4fd	48		pha		            pha
+.c4fe	c9 7f		cmp #$7f	            cmp #($ff-minus|fao)&m8    ;expected flags + always on bits
+.c500	d0 fe		bne $c500	        bne *           ;failed not equal (non zero)
+.c502	28		plp		            plp         ;restore status
+.c503	1b		inz		        inz            ;01
+.c504	08		php		            php         ;save flags
+.c505	c2 01		cpz #$01	            cpz #<1     ;test result
+.c507	d0 fe		bne $c507	        bne *           ;failed not equal (non zero)
+.c509	68		pla		            pla         ;load status
+.c50a	48		pha		            pha
+.c50b	c9 7d		cmp #$7d	            cmp #($ff-minus-zero|fao)&m8    ;expected flags + always on bits
+.c50d	d0 fe		bne $c50d	        bne *           ;failed not equal (non zero)
+.c50f	28		plp		            plp         ;restore status
+.c510	3b		dez		        dez            ;00
+.c511	08		php		            php         ;save flags
+.c512	c2 00		cpz #$00	            cpz #<0     ;test result
+.c514	d0 fe		bne $c514	        bne *           ;failed not equal (non zero)
+.c516	68		pla		            pla         ;load status
+.c517	48		pha		            pha
+.c518	c9 7f		cmp #$7f	            cmp #($ff-minus|fao)&m8    ;expected flags + always on bits
+.c51a	d0 fe		bne $c51a	        bne *           ;failed not equal (non zero)
+.c51c	28		plp		            plp         ;restore status
+.c51d	3b		dez		        dez            ;ff
+.c51e	08		php		            php         ;save flags
+.c51f	c2 ff		cpz #$ff	            cpz #<$ff     ;test result
+.c521	d0 fe		bne $c521	        bne *           ;failed not equal (non zero)
+.c523	68		pla		            pla         ;load status
+.c524	48		pha		            pha
+.c525	c9 fd		cmp #$fd	            cmp #($ff-zero|fao)&m8    ;expected flags + always on bits
+.c527	d0 fe		bne $c527	        bne *           ;failed not equal (non zero)
+.c529	28		plp		            plp         ;restore status
+.c52a	3b		dez		        dez            ;fe
+.c52b	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c52d	48		pha		            pha         ;use stack to load status
+.c52e	a3 fe		ldz #$fe	            ldz #<$fe     ;precharge index x
+.c530	28		plp		            plp
+.c531	1b		inz		        inz            ;ff
+.c532	08		php		            php         ;save flags
+.c533	c2 ff		cpz #$ff	            cpz #<$ff     ;test result
+.c535	d0 fe		bne $c535	        bne *           ;failed not equal (non zero)
+.c537	68		pla		            pla         ;load status
+.c538	48		pha		            pha
+.c539	c9 b0		cmp #$b0	            cmp #(minus|fao)&m8    ;expected flags + always on bits
+.c53b	d0 fe		bne $c53b	        bne *           ;failed not equal (non zero)
+.c53d	28		plp		            plp         ;restore status
+.c53e	1b		inz		        inz            ;00
+.c53f	08		php		            php         ;save flags
+.c540	c2 00		cpz #$00	            cpz #<0     ;test result
+.c542	d0 fe		bne $c542	        bne *           ;failed not equal (non zero)
+.c544	68		pla		            pla         ;load status
+.c545	48		pha		            pha
+.c546	c9 32		cmp #$32	            cmp #(zero|fao)&m8    ;expected flags + always on bits
+.c548	d0 fe		bne $c548	        bne *           ;failed not equal (non zero)
+.c54a	28		plp		            plp         ;restore status
+.c54b	1b		inz		        inz            ;01
+.c54c	08		php		            php         ;save flags
+.c54d	c2 01		cpz #$01	            cpz #<1     ;test result
+.c54f	d0 fe		bne $c54f	        bne *           ;failed not equal (non zero)
+.c551	68		pla		            pla         ;load status
+.c552	48		pha		            pha
+.c553	c9 30		cmp #$30	            cmp #(0|fao)&m8    ;expected flags + always on bits
+.c555	d0 fe		bne $c555	        bne *           ;failed not equal (non zero)
+.c557	28		plp		            plp         ;restore status
+.c558	3b		dez		        dez            ;00
+.c559	08		php		            php         ;save flags
+.c55a	c2 00		cpz #$00	            cpz #<0     ;test result
+.c55c	d0 fe		bne $c55c	        bne *           ;failed not equal (non zero)
+.c55e	68		pla		            pla         ;load status
+.c55f	48		pha		            pha
+.c560	c9 32		cmp #$32	            cmp #(zero|fao)&m8    ;expected flags + always on bits
+.c562	d0 fe		bne $c562	        bne *           ;failed not equal (non zero)
+.c564	28		plp		            plp         ;restore status
+.c565	3b		dez		        dez            ;ff
+.c566	08		php		            php         ;save flags
+.c567	c2 ff		cpz #$ff	            cpz #<$ff     ;test result
+.c569	d0 fe		bne $c569	        bne *           ;failed not equal (non zero)
+.c56b	68		pla		            pla         ;load status
+.c56c	48		pha		            pha
+.c56d	c9 b0		cmp #$b0	            cmp #(minus|fao)&m8    ;expected flags + always on bits
+.c56f	d0 fe		bne $c56f	        bne *           ;failed not equal (non zero)
+.c571	28		plp		            plp         ;restore status
+.c572	e0 ac		cpx #$ac	        cpx #$ac
+.c574	d0 fe		bne $c574	        bne *           ;failed not equal (non zero)
+.c576	c0 dc		cpy #$dc	        cpy #$dc
+.c578	d0 fe		bne $c578	        bne *           ;failed not equal (non zero)
+.c57a	ba		tsx		        tsx
+.c57b	e0 ff		cpx #$ff	        cpx #$ff
+.c57d	d0 fe		bne $c57d	        bne *           ;failed not equal (non zero)
+
+.c57f	a3 00		ldz #$00	        ldz #$00    ; restore default Z value for next test.
+
+.c581	ad 02 02	lda $0202	            lda test_case   ;previous test
+.c584	c9 0b		cmp #$0b	            cmp #test_num
+.c586	d0 fe		bne $c586	        bne *           ;failed not equal (non zero)
+=12					test_num    .var test_num + 1
+.c588	a9 0c		lda #$0c	            lda #test_num   ;*** next tests' number
+.c58a	8d 02 02	sta $0202	            sta test_case
+					            ;check_ram       ;uncomment to find altered RAM after each test
+
+					; testing load / store accumulator LDA / STA (zp)
+.c58d	a2 99		ldx #$99	        ldx #$99    ;protect x & y
+.c58f	a0 66		ldy #$66	        ldy #$66
+.c591	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c593	48		pha		            pha         ;use stack to load status
+.c594	28		plp		            plp
+.c595	b2 24		lda ($24),z	        lda (ind1),z
+.c597	08		php		        php         ;test stores do not alter flags
+.c598	49 c3		eor #$c3	        eor #$c3
+.c59a	28		plp		        plp
+.c59b	92 30		sta ($30),z	        sta (indt),z
+.c59d	08		php		        php         ;flags after load/store sequence
+.c59e	49 c3		eor #$c3	        eor #$c3
+.c5a0	c9 c3		cmp #$c3	        cmp #$c3    ;test result
+.c5a2	d0 fe		bne $c5a2	        bne *           ;failed not equal (non zero)
+.c5a4	68		pla		        pla         ;load status
+.c5a5	49 30		eor #$30	            eor #0|fao         ;invert expected flags + always on bits
+.c5a7	cd 15 02	cmp $0215	        cmp fLDx    ;test flags
+.c5aa	d0 fe		bne $c5aa	        bne *           ;failed not equal (non zero)
+.c5ac	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c5ae	48		pha		            pha         ;use stack to load status
+.c5af	28		plp		            plp
+.c5b0	b2 26		lda ($26),z	        lda (ind1+2),z
+.c5b2	08		php		        php         ;test stores do not alter flags
+.c5b3	49 c3		eor #$c3	        eor #$c3
+.c5b5	28		plp		        plp
+.c5b6	92 32		sta ($32),z	        sta (indt+2),z
+.c5b8	08		php		        php         ;flags after load/store sequence
+.c5b9	49 c3		eor #$c3	        eor #$c3
+.c5bb	c9 82		cmp #$82	        cmp #$82    ;test result
+.c5bd	d0 fe		bne $c5bd	        bne *           ;failed not equal (non zero)
+.c5bf	68		pla		        pla         ;load status
+.c5c0	49 30		eor #$30	            eor #0|fao         ;invert expected flags + always on bits
+.c5c2	cd 16 02	cmp $0216	        cmp fLDx+1  ;test flags
+.c5c5	d0 fe		bne $c5c5	        bne *           ;failed not equal (non zero)
+.c5c7	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c5c9	48		pha		            pha         ;use stack to load status
+.c5ca	28		plp		            plp
+.c5cb	b2 28		lda ($28),z	        lda (ind1+4),z
+.c5cd	08		php		        php         ;test stores do not alter flags
+.c5ce	49 c3		eor #$c3	        eor #$c3
+.c5d0	28		plp		        plp
+.c5d1	92 34		sta ($34),z	        sta (indt+4),z
+.c5d3	08		php		        php         ;flags after load/store sequence
+.c5d4	49 c3		eor #$c3	        eor #$c3
+.c5d6	c9 41		cmp #$41	        cmp #$41    ;test result
+.c5d8	d0 fe		bne $c5d8	        bne *           ;failed not equal (non zero)
+.c5da	68		pla		        pla         ;load status
+.c5db	49 30		eor #$30	            eor #0|fao         ;invert expected flags + always on bits
+.c5dd	cd 17 02	cmp $0217	        cmp fLDx+2  ;test flags
+.c5e0	d0 fe		bne $c5e0	        bne *           ;failed not equal (non zero)
+.c5e2	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c5e4	48		pha		            pha         ;use stack to load status
+.c5e5	28		plp		            plp
+.c5e6	b2 2a		lda ($2a),z	        lda (ind1+6),z
+.c5e8	08		php		        php         ;test stores do not alter flags
+.c5e9	49 c3		eor #$c3	        eor #$c3
+.c5eb	28		plp		        plp
+.c5ec	92 36		sta ($36),z	        sta (indt+6),z
+.c5ee	08		php		        php         ;flags after load/store sequence
+.c5ef	49 c3		eor #$c3	        eor #$c3
+.c5f1	c9 00		cmp #$00	        cmp #0      ;test result
+.c5f3	d0 fe		bne $c5f3	        bne *           ;failed not equal (non zero)
+.c5f5	68		pla		        pla         ;load status
+.c5f6	49 30		eor #$30	            eor #0|fao         ;invert expected flags + always on bits
+.c5f8	cd 18 02	cmp $0218	        cmp fLDx+3  ;test flags
+.c5fb	d0 fe		bne $c5fb	        bne *           ;failed not equal (non zero)
+.c5fd	e0 99		cpx #$99	        cpx #$99
+.c5ff	d0 fe		bne $c5ff	        bne *           ;failed not equal (non zero)
+.c601	c0 66		cpy #$66	        cpy #$66
+.c603	d0 fe		bne $c603	        bne *           ;failed not equal (non zero)
+
+.c605	a0 03		ldy #$03	        ldy #3      ;testing store result
+.c607	a2 00		ldx #$00	        ldx #0
+.c609	b9 05 02	lda $0205,y	tstai1  lda abst,y
+.c60c	49 c3		eor #$c3	        eor #$c3
+.c60e	d9 10 02	cmp $0210,y	        cmp abs1,y
+.c611	d0 fe		bne $c611	        bne *           ;failed not equal (non zero)
+.c613	8a		txa		        txa
+.c614	99 05 02	sta $0205,y	        sta abst,y  ;clear
+.c617	88		dey		        dey
+.c618	10 ef		bpl $c609	        bpl tstai1
+
+.c61a	a2 99		ldx #$99	        ldx #$99    ;protect x & y
+.c61c	a0 66		ldy #$66	        ldy #$66
+.c61e	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c620	48		pha		            pha         ;use stack to load status
+.c621	28		plp		            plp
+.c622	b2 24		lda ($24),z	        lda (ind1),z
+.c624	08		php		        php         ;test stores do not alter flags
+.c625	49 c3		eor #$c3	        eor #$c3
+.c627	28		plp		        plp
+.c628	92 30		sta ($30),z	        sta (indt),z
+.c62a	08		php		        php         ;flags after load/store sequence
+.c62b	49 c3		eor #$c3	        eor #$c3
+.c62d	c9 c3		cmp #$c3	        cmp #$c3    ;test result
+.c62f	d0 fe		bne $c62f	        bne *           ;failed not equal (non zero)
+.c631	68		pla		        pla         ;load status
+.c632	49 7d		eor #$7d	            eor #<~fnz|fao         ;invert expected flags + always on bits
+.c634	cd 15 02	cmp $0215	        cmp fLDx    ;test flags
+.c637	d0 fe		bne $c637	        bne *           ;failed not equal (non zero)
+.c639	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c63b	48		pha		            pha         ;use stack to load status
+.c63c	28		plp		            plp
+.c63d	b2 26		lda ($26),z	        lda (ind1+2),z
+.c63f	08		php		        php         ;test stores do not alter flags
+.c640	49 c3		eor #$c3	        eor #$c3
+.c642	28		plp		        plp
+.c643	92 32		sta ($32),z	        sta (indt+2),z
+.c645	08		php		        php         ;flags after load/store sequence
+.c646	49 c3		eor #$c3	        eor #$c3
+.c648	c9 82		cmp #$82	        cmp #$82    ;test result
+.c64a	d0 fe		bne $c64a	        bne *           ;failed not equal (non zero)
+.c64c	68		pla		        pla         ;load status
+.c64d	49 7d		eor #$7d	            eor #<~fnz|fao         ;invert expected flags + always on bits
+.c64f	cd 16 02	cmp $0216	        cmp fLDx+1  ;test flags
+.c652	d0 fe		bne $c652	        bne *           ;failed not equal (non zero)
+.c654	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c656	48		pha		            pha         ;use stack to load status
+.c657	28		plp		            plp
+.c658	b2 28		lda ($28),z	        lda (ind1+4),z
+.c65a	08		php		        php         ;test stores do not alter flags
+.c65b	49 c3		eor #$c3	        eor #$c3
+.c65d	28		plp		        plp
+.c65e	92 34		sta ($34),z	        sta (indt+4),z
+.c660	08		php		        php         ;flags after load/store sequence
+.c661	49 c3		eor #$c3	        eor #$c3
+.c663	c9 41		cmp #$41	        cmp #$41    ;test result
+.c665	d0 fe		bne $c665	        bne *           ;failed not equal (non zero)
+.c667	68		pla		        pla         ;load status
+.c668	49 7d		eor #$7d	            eor #<~fnz|fao         ;invert expected flags + always on bits
+.c66a	cd 17 02	cmp $0217	        cmp fLDx+2  ;test flags
+.c66d	d0 fe		bne $c66d	        bne *           ;failed not equal (non zero)
+.c66f	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c671	48		pha		            pha         ;use stack to load status
+.c672	28		plp		            plp
+.c673	b2 2a		lda ($2a),z	        lda (ind1+6),z
+.c675	08		php		        php         ;test stores do not alter flags
+.c676	49 c3		eor #$c3	        eor #$c3
+.c678	28		plp		        plp
+.c679	92 36		sta ($36),z	        sta (indt+6),z
+.c67b	08		php		        php         ;flags after load/store sequence
+.c67c	49 c3		eor #$c3	        eor #$c3
+.c67e	c9 00		cmp #$00	        cmp #0      ;test result
+.c680	d0 fe		bne $c680	        bne *           ;failed not equal (non zero)
+.c682	68		pla		        pla         ;load status
+.c683	49 7d		eor #$7d	            eor #<~fnz|fao         ;invert expected flags + always on bits
+.c685	cd 18 02	cmp $0218	        cmp fLDx+3  ;test flags
+.c688	d0 fe		bne $c688	        bne *           ;failed not equal (non zero)
+.c68a	e0 99		cpx #$99	        cpx #$99
+.c68c	d0 fe		bne $c68c	        bne *           ;failed not equal (non zero)
+.c68e	c0 66		cpy #$66	        cpy #$66
+.c690	d0 fe		bne $c690	        bne *           ;failed not equal (non zero)
+
+.c692	a0 03		ldy #$03	        ldy #3      ;testing store result
+.c694	a2 00		ldx #$00	        ldx #0
+.c696	b9 05 02	lda $0205,y	tstai2  lda abst,y
+.c699	49 c3		eor #$c3	        eor #$c3
+.c69b	d9 10 02	cmp $0210,y	        cmp abs1,y
+.c69e	d0 fe		bne $c69e	        bne *           ;failed not equal (non zero)
+.c6a0	8a		txa		        txa
+.c6a1	99 05 02	sta $0205,y	        sta abst,y  ;clear
+.c6a4	88		dey		        dey
+.c6a5	10 ef		bpl $c696	        bpl tstai2
+.c6a7	ba		tsx		        tsx
+.c6a8	e0 ff		cpx #$ff	        cpx #$ff
+.c6aa	d0 fe		bne $c6aa	        bne *           ;failed not equal (non zero)
+.c6ac	ad 02 02	lda $0202	            lda test_case   ;previous test
+.c6af	c9 0c		cmp #$0c	            cmp #test_num
+.c6b1	d0 fe		bne $c6b1	        bne *           ;failed not equal (non zero)
+=13					test_num    .var test_num + 1
+.c6b3	a9 0d		lda #$0d	            lda #test_num   ;*** next tests' number
+.c6b5	8d 02 02	sta $0202	            sta test_case
+					            ;check_ram       ;uncomment to find altered RAM after each test
+
+					; testing STZ - zp / abs / zp,x / abs,x
+.c6b8	a0 7b		ldy #$7b	        ldy #123    ;protect y
+.c6ba	a2 04		ldx #$04	        ldx #4      ;precharge test area
+.c6bc	a9 07		lda #$07	        lda #7
+.c6be	95 0c		sta $0c,x	tstz1   sta zpt,x
+.c6c0	0a		asl a		        asl a
+.c6c1	ca		dex		        dex
+.c6c2	10 fa		bpl $c6be	        bpl tstz1
+.c6c4	a2 04		ldx #$04	        ldx #4
+.c6c6	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c6c8	48		pha		            pha         ;use stack to load status
+.c6c9	a9 55		lda #$55	            lda #<$55     ;precharge accu
+.c6cb	28		plp		            plp
+.c6cc	64 0c		stz $0c		        stz zpt
+.c6ce	64 0d		stz $0d		        stz zpt+1
+.c6d0	64 0e		stz $0e		        stz zpt+2
+.c6d2	64 0f		stz $0f		        stz zpt+3
+.c6d4	64 10		stz $10		        stz zpt+4
+.c6d6	08		php		            php         ;save flags
+.c6d7	c9 55		cmp #$55	            cmp #<$55     ;test result
+.c6d9	d0 fe		bne $c6d9	        bne *           ;failed not equal (non zero)
+.c6db	68		pla		            pla         ;load status
+.c6dc	48		pha		            pha
+.c6dd	c9 ff		cmp #$ff	            cmp #($ff|fao)&m8    ;expected flags + always on bits
+.c6df	d0 fe		bne $c6df	        bne *           ;failed not equal (non zero)
+.c6e1	28		plp		            plp         ;restore status
+.c6e2	b5 0c		lda $0c,x	tstz2   lda zpt,x   ;verify zeros stored
+.c6e4	d0 fe		bne $c6e4	        bne *           ;failed not equal (non zero)
+.c6e6	ca		dex		        dex
+.c6e7	10 f9		bpl $c6e2	        bpl tstz2
+.c6e9	a2 04		ldx #$04	        ldx #4      ;precharge test area
+.c6eb	a9 07		lda #$07	        lda #7
+.c6ed	95 0c		sta $0c,x	tstz3   sta zpt,x
+.c6ef	0a		asl a		        asl a
+.c6f0	ca		dex		        dex
+.c6f1	10 fa		bpl $c6ed	        bpl tstz3
+.c6f3	a2 04		ldx #$04	        ldx #4
+.c6f5	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c6f7	48		pha		            pha         ;use stack to load status
+.c6f8	a9 aa		lda #$aa	            lda #<$aa     ;precharge accu
+.c6fa	28		plp		            plp
+.c6fb	64 0c		stz $0c		        stz zpt
+.c6fd	64 0d		stz $0d		        stz zpt+1
+.c6ff	64 0e		stz $0e		        stz zpt+2
+.c701	64 0f		stz $0f		        stz zpt+3
+.c703	64 10		stz $10		        stz zpt+4
+.c705	08		php		            php         ;save flags
+.c706	c9 aa		cmp #$aa	            cmp #<$aa     ;test result
+.c708	d0 fe		bne $c708	        bne *           ;failed not equal (non zero)
+.c70a	68		pla		            pla         ;load status
+.c70b	48		pha		            pha
+.c70c	c9 30		cmp #$30	            cmp #(0|fao)&m8    ;expected flags + always on bits
+.c70e	d0 fe		bne $c70e	        bne *           ;failed not equal (non zero)
+.c710	28		plp		            plp         ;restore status
+.c711	b5 0c		lda $0c,x	tstz4   lda zpt,x   ;verify zeros stored
+.c713	d0 fe		bne $c713	        bne *           ;failed not equal (non zero)
+.c715	ca		dex		        dex
+.c716	10 f9		bpl $c711	        bpl tstz4
+
+.c718	a2 04		ldx #$04	        ldx #4      ;precharge test area
+.c71a	a9 07		lda #$07	        lda #7
+.c71c	9d 05 02	sta $0205,x	tstz5   sta abst,x
+.c71f	0a		asl a		        asl a
+.c720	ca		dex		        dex
+.c721	10 f9		bpl $c71c	        bpl tstz5
+.c723	a2 04		ldx #$04	        ldx #4
+.c725	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c727	48		pha		            pha         ;use stack to load status
+.c728	a9 55		lda #$55	            lda #<$55     ;precharge accu
+.c72a	28		plp		            plp
+.c72b	9c 05 02	stz $0205	        stz abst
+.c72e	9c 06 02	stz $0206	        stz abst+1
+.c731	9c 07 02	stz $0207	        stz abst+2
+.c734	9c 08 02	stz $0208	        stz abst+3
+.c737	9c 09 02	stz $0209	        stz abst+4
+.c73a	08		php		            php         ;save flags
+.c73b	c9 55		cmp #$55	            cmp #<$55     ;test result
+.c73d	d0 fe		bne $c73d	        bne *           ;failed not equal (non zero)
+.c73f	68		pla		            pla         ;load status
+.c740	48		pha		            pha
+.c741	c9 ff		cmp #$ff	            cmp #($ff|fao)&m8    ;expected flags + always on bits
+.c743	d0 fe		bne $c743	        bne *           ;failed not equal (non zero)
+.c745	28		plp		            plp         ;restore status
+.c746	bd 05 02	lda $0205,x	tstz6   lda abst,x   ;verify zeros stored
+.c749	d0 fe		bne $c749	        bne *           ;failed not equal (non zero)
+.c74b	ca		dex		        dex
+.c74c	10 f8		bpl $c746	        bpl tstz6
+.c74e	a2 04		ldx #$04	        ldx #4      ;precharge test area
+.c750	a9 07		lda #$07	        lda #7
+.c752	9d 05 02	sta $0205,x	tstz7   sta abst,x
+.c755	0a		asl a		        asl a
+.c756	ca		dex		        dex
+.c757	10 f9		bpl $c752	        bpl tstz7
+.c759	a2 04		ldx #$04	        ldx #4
+.c75b	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c75d	48		pha		            pha         ;use stack to load status
+.c75e	a9 aa		lda #$aa	            lda #<$aa     ;precharge accu
+.c760	28		plp		            plp
+.c761	9c 05 02	stz $0205	        stz abst
+.c764	9c 06 02	stz $0206	        stz abst+1
+.c767	9c 07 02	stz $0207	        stz abst+2
+.c76a	9c 08 02	stz $0208	        stz abst+3
+.c76d	9c 09 02	stz $0209	        stz abst+4
+.c770	08		php		            php         ;save flags
+.c771	c9 aa		cmp #$aa	            cmp #<$aa     ;test result
+.c773	d0 fe		bne $c773	        bne *           ;failed not equal (non zero)
+.c775	68		pla		            pla         ;load status
+.c776	48		pha		            pha
+.c777	c9 30		cmp #$30	            cmp #(0|fao)&m8    ;expected flags + always on bits
+.c779	d0 fe		bne $c779	        bne *           ;failed not equal (non zero)
+.c77b	28		plp		            plp         ;restore status
+.c77c	bd 05 02	lda $0205,x	tstz8   lda abst,x   ;verify zeros stored
+.c77f	d0 fe		bne $c77f	        bne *           ;failed not equal (non zero)
+.c781	ca		dex		        dex
+.c782	10 f8		bpl $c77c	        bpl tstz8
+
+.c784	a2 04		ldx #$04	        ldx #4      ;precharge test area
+.c786	a9 07		lda #$07	        lda #7
+.c788	95 0c		sta $0c,x	tstz11  sta zpt,x
+.c78a	0a		asl a		        asl a
+.c78b	ca		dex		        dex
+.c78c	10 fa		bpl $c788	        bpl tstz11
+.c78e	a2 04		ldx #$04	        ldx #4
+.c790					tstz15
+.c790	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c792	48		pha		            pha         ;use stack to load status
+.c793	a9 55		lda #$55	            lda #<$55     ;precharge accu
+.c795	28		plp		            plp
+.c796	74 0c		stz $0c,x	        stz zpt,x
+.c798	08		php		            php         ;save flags
+.c799	c9 55		cmp #$55	            cmp #<$55     ;test result
+.c79b	d0 fe		bne $c79b	        bne *           ;failed not equal (non zero)
+.c79d	68		pla		            pla         ;load status
+.c79e	48		pha		            pha
+.c79f	c9 ff		cmp #$ff	            cmp #($ff|fao)&m8    ;expected flags + always on bits
+.c7a1	d0 fe		bne $c7a1	        bne *           ;failed not equal (non zero)
+.c7a3	28		plp		            plp         ;restore status
+.c7a4	ca		dex		        dex
+.c7a5	10 e9		bpl $c790	        bpl tstz15
+.c7a7	a2 04		ldx #$04	        ldx #4
+.c7a9	b5 0c		lda $0c,x	tstz12  lda zpt,x   ;verify zeros stored
+.c7ab	d0 fe		bne $c7ab	        bne *           ;failed not equal (non zero)
+.c7ad	ca		dex		        dex
+.c7ae	10 f9		bpl $c7a9	        bpl tstz12
+.c7b0	a2 04		ldx #$04	        ldx #4      ;precharge test area
+.c7b2	a9 07		lda #$07	        lda #7
+.c7b4	95 0c		sta $0c,x	tstz13  sta zpt,x
+.c7b6	0a		asl a		        asl a
+.c7b7	ca		dex		        dex
+.c7b8	10 fa		bpl $c7b4	        bpl tstz13
+.c7ba	a2 04		ldx #$04	        ldx #4
+.c7bc					tstz16
+.c7bc	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c7be	48		pha		            pha         ;use stack to load status
+.c7bf	a9 aa		lda #$aa	            lda #<$aa     ;precharge accu
+.c7c1	28		plp		            plp
+.c7c2	74 0c		stz $0c,x	        stz zpt,x
+.c7c4	08		php		            php         ;save flags
+.c7c5	c9 aa		cmp #$aa	            cmp #<$aa     ;test result
+.c7c7	d0 fe		bne $c7c7	        bne *           ;failed not equal (non zero)
+.c7c9	68		pla		            pla         ;load status
+.c7ca	48		pha		            pha
+.c7cb	c9 30		cmp #$30	            cmp #(0|fao)&m8    ;expected flags + always on bits
+.c7cd	d0 fe		bne $c7cd	        bne *           ;failed not equal (non zero)
+.c7cf	28		plp		            plp         ;restore status
+.c7d0	ca		dex		        dex
+.c7d1	10 e9		bpl $c7bc	        bpl tstz16
+.c7d3	a2 04		ldx #$04	        ldx #4
+.c7d5	b5 0c		lda $0c,x	tstz14  lda zpt,x   ;verify zeros stored
+.c7d7	d0 fe		bne $c7d7	        bne *           ;failed not equal (non zero)
+.c7d9	ca		dex		        dex
+.c7da	10 f9		bpl $c7d5	        bpl tstz14
+
+.c7dc	a2 04		ldx #$04	        ldx #4      ;precharge test area
+.c7de	a9 07		lda #$07	        lda #7
+.c7e0	9d 05 02	sta $0205,x	tstz21  sta abst,x
+.c7e3	0a		asl a		        asl a
+.c7e4	ca		dex		        dex
+.c7e5	10 f9		bpl $c7e0	        bpl tstz21
+.c7e7	a2 04		ldx #$04	        ldx #4
+.c7e9					tstz25
+.c7e9	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c7eb	48		pha		            pha         ;use stack to load status
+.c7ec	a9 55		lda #$55	            lda #<$55     ;precharge accu
+.c7ee	28		plp		            plp
+.c7ef	9e 05 02	stz $0205,x	        stz abst,x
+.c7f2	08		php		            php         ;save flags
+.c7f3	c9 55		cmp #$55	            cmp #<$55     ;test result
+.c7f5	d0 fe		bne $c7f5	        bne *           ;failed not equal (non zero)
+.c7f7	68		pla		            pla         ;load status
+.c7f8	48		pha		            pha
+.c7f9	c9 ff		cmp #$ff	            cmp #($ff|fao)&m8    ;expected flags + always on bits
+.c7fb	d0 fe		bne $c7fb	        bne *           ;failed not equal (non zero)
+.c7fd	28		plp		            plp         ;restore status
+.c7fe	ca		dex		        dex
+.c7ff	10 e8		bpl $c7e9	        bpl tstz25
+.c801	a2 04		ldx #$04	        ldx #4
+.c803	bd 05 02	lda $0205,x	tstz22  lda abst,x   ;verify zeros stored
+.c806	d0 fe		bne $c806	        bne *           ;failed not equal (non zero)
+.c808	ca		dex		        dex
+.c809	10 f8		bpl $c803	        bpl tstz22
+.c80b	a2 04		ldx #$04	        ldx #4      ;precharge test area
+.c80d	a9 07		lda #$07	        lda #7
+.c80f	9d 05 02	sta $0205,x	tstz23  sta abst,x
+.c812	0a		asl a		        asl a
+.c813	ca		dex		        dex
+.c814	10 f9		bpl $c80f	        bpl tstz23
+.c816	a2 04		ldx #$04	        ldx #4
+.c818					tstz26
+.c818	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c81a	48		pha		            pha         ;use stack to load status
+.c81b	a9 aa		lda #$aa	            lda #<$aa     ;precharge accu
+.c81d	28		plp		            plp
+.c81e	9e 05 02	stz $0205,x	        stz abst,x
+.c821	08		php		            php         ;save flags
+.c822	c9 aa		cmp #$aa	            cmp #<$aa     ;test result
+.c824	d0 fe		bne $c824	        bne *           ;failed not equal (non zero)
+.c826	68		pla		            pla         ;load status
+.c827	48		pha		            pha
+.c828	c9 30		cmp #$30	            cmp #(0|fao)&m8    ;expected flags + always on bits
+.c82a	d0 fe		bne $c82a	        bne *           ;failed not equal (non zero)
+.c82c	28		plp		            plp         ;restore status
+.c82d	ca		dex		        dex
+.c82e	10 e8		bpl $c818	        bpl tstz26
+.c830	a2 04		ldx #$04	        ldx #4
+.c832	bd 05 02	lda $0205,x	tstz24  lda abst,x   ;verify zeros stored
+.c835	d0 fe		bne $c835	        bne *           ;failed not equal (non zero)
+.c837	ca		dex		        dex
+.c838	10 f8		bpl $c832	        bpl tstz24
+
+.c83a	c0 7b		cpy #$7b	        cpy #123
+.c83c	d0 fe		bne $c83c	        bne *           ;failed not equal (non zero)
+.c83e	ba		tsx		        tsx
+.c83f	e0 ff		cpx #$ff	        cpx #$ff
+.c841	d0 fe		bne $c841	        bne *           ;failed not equal (non zero)
+.c843	ad 02 02	lda $0202	            lda test_case   ;previous test
+.c846	c9 0d		cmp #$0d	            cmp #test_num
+.c848	d0 fe		bne $c848	        bne *           ;failed not equal (non zero)
+=14					test_num    .var test_num + 1
+.c84a	a9 0e		lda #$0e	            lda #test_num   ;*** next tests' number
+.c84c	8d 02 02	sta $0202	            sta test_case
+					            ;check_ram       ;uncomment to find altered RAM after each test
+
+
+					; testing CMP - (zp)
+.c84f	a2 de		ldx #$de	        ldx #$de    ;protect x & y
+.c851	a0 ad		ldy #$ad	        ldy #$ad
+.c853	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c855	48		pha		            pha         ;use stack to load status
+.c856	a9 80		lda #$80	            lda #<$80     ;precharge accu
+.c858	28		plp		            plp
+.c859	d2 2c		cmp ($2c),z	        cmp (ind1+8),z
+.c85b	08		php		            php         ;save flags
+.c85c	c9 80		cmp #$80	            cmp #<$80     ;test result
+.c85e	d0 fe		bne $c85e	        bne *           ;failed not equal (non zero)
+.c860	68		pla		            pla         ;load status
+.c861	48		pha		            pha
+.c862	c9 31		cmp #$31	            cmp #(fc|fao)&m8    ;expected flags + always on bits
+.c864	d0 fe		bne $c864	        bne *           ;failed not equal (non zero)
+.c866	28		plp		            plp         ;restore status
+.c867	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c869	48		pha		            pha         ;use stack to load status
+.c86a	a9 7f		lda #$7f	            lda #<$7f     ;precharge accu
+.c86c	28		plp		            plp
+.c86d	d2 2c		cmp ($2c),z	        cmp (ind1+8),z
+.c86f	08		php		            php         ;save flags
+.c870	c9 7f		cmp #$7f	            cmp #<$7f     ;test result
+.c872	d0 fe		bne $c872	        bne *           ;failed not equal (non zero)
+.c874	68		pla		            pla         ;load status
+.c875	48		pha		            pha
+.c876	c9 33		cmp #$33	            cmp #(fzc|fao)&m8    ;expected flags + always on bits
+.c878	d0 fe		bne $c878	        bne *           ;failed not equal (non zero)
+.c87a	28		plp		            plp         ;restore status
+.c87b	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c87d	48		pha		            pha         ;use stack to load status
+.c87e	a9 7e		lda #$7e	            lda #<$7e     ;precharge accu
+.c880	28		plp		            plp
+.c881	d2 2c		cmp ($2c),z	        cmp (ind1+8),z
+.c883	08		php		            php         ;save flags
+.c884	c9 7e		cmp #$7e	            cmp #<$7e     ;test result
+.c886	d0 fe		bne $c886	        bne *           ;failed not equal (non zero)
+.c888	68		pla		            pla         ;load status
+.c889	48		pha		            pha
+.c88a	c9 b0		cmp #$b0	            cmp #(fn|fao)&m8    ;expected flags + always on bits
+.c88c	d0 fe		bne $c88c	        bne *           ;failed not equal (non zero)
+.c88e	28		plp		            plp         ;restore status
+.c88f	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c891	48		pha		            pha         ;use stack to load status
+.c892	a9 80		lda #$80	            lda #<$80     ;precharge accu
+.c894	28		plp		            plp
+.c895	d2 2c		cmp ($2c),z	        cmp (ind1+8),z
+.c897	08		php		            php         ;save flags
+.c898	c9 80		cmp #$80	            cmp #<$80     ;test result
+.c89a	d0 fe		bne $c89a	        bne *           ;failed not equal (non zero)
+.c89c	68		pla		            pla         ;load status
+.c89d	48		pha		            pha
+.c89e	c9 7d		cmp #$7d	            cmp #(~fnz|fao)&m8    ;expected flags + always on bits
+.c8a0	d0 fe		bne $c8a0	        bne *           ;failed not equal (non zero)
+.c8a2	28		plp		            plp         ;restore status
+.c8a3	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c8a5	48		pha		            pha         ;use stack to load status
+.c8a6	a9 7f		lda #$7f	            lda #<$7f     ;precharge accu
+.c8a8	28		plp		            plp
+.c8a9	d2 2c		cmp ($2c),z	        cmp (ind1+8),z
+.c8ab	08		php		            php         ;save flags
+.c8ac	c9 7f		cmp #$7f	            cmp #<$7f     ;test result
+.c8ae	d0 fe		bne $c8ae	        bne *           ;failed not equal (non zero)
+.c8b0	68		pla		            pla         ;load status
+.c8b1	48		pha		            pha
+.c8b2	c9 7f		cmp #$7f	            cmp #(~fn|fao)&m8    ;expected flags + always on bits
+.c8b4	d0 fe		bne $c8b4	        bne *           ;failed not equal (non zero)
+.c8b6	28		plp		            plp         ;restore status
+.c8b7	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c8b9	48		pha		            pha         ;use stack to load status
+.c8ba	a9 7e		lda #$7e	            lda #<$7e     ;precharge accu
+.c8bc	28		plp		            plp
+.c8bd	d2 2c		cmp ($2c),z	        cmp (ind1+8),z
+.c8bf	08		php		            php         ;save flags
+.c8c0	c9 7e		cmp #$7e	            cmp #<$7e     ;test result
+.c8c2	d0 fe		bne $c8c2	        bne *           ;failed not equal (non zero)
+.c8c4	68		pla		            pla         ;load status
+.c8c5	48		pha		            pha
+.c8c6	c9 fc		cmp #$fc	            cmp #(~fzc|fao)&m8    ;expected flags + always on bits
+.c8c8	d0 fe		bne $c8c8	        bne *           ;failed not equal (non zero)
+.c8ca	28		plp		            plp         ;restore status
+.c8cb	e0 de		cpx #$de	        cpx #$de
+.c8cd	d0 fe		bne $c8cd	        bne *           ;failed not equal (non zero)
+.c8cf	c0 ad		cpy #$ad	        cpy #$ad
+.c8d1	d0 fe		bne $c8d1	        bne *           ;failed not equal (non zero)
+.c8d3	ba		tsx		        tsx
+.c8d4	e0 ff		cpx #$ff	        cpx #$ff
+.c8d6	d0 fe		bne $c8d6	        bne *           ;failed not equal (non zero)
+.c8d8	ad 02 02	lda $0202	            lda test_case   ;previous test
+.c8db	c9 0e		cmp #$0e	            cmp #test_num
+.c8dd	d0 fe		bne $c8dd	        bne *           ;failed not equal (non zero)
+=15					test_num    .var test_num + 1
+.c8df	a9 0f		lda #$0f	            lda #test_num   ;*** next tests' number
+.c8e1	8d 02 02	sta $0202	            sta test_case
+					            ;check_ram       ;uncomment to find altered RAM after each test
+
+					; testing logical instructions - AND EOR ORA (zp)
+.c8e4	a2 42		ldx #$42	        ldx #$42    ;protect x & y
+
+.c8e6	a0 00		ldy #$00	        ldy #0      ;AND
+.c8e8	a5 3a		lda $3a		        lda indAN   ;set indirect address
+.c8ea	85 0c		sta $0c		        sta zpt
+.c8ec	a5 3b		lda $3b		        lda indAN+1
+.c8ee	85 0d		sta $0d		        sta zpt+1
+.c8f0					tand1
+.c8f0	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c8f2	48		pha		            pha         ;use stack to load status
+.c8f3	b9 53 02	lda $0253,y	            lda absANa,y    ;precharge accu
+.c8f6	28		plp		            plp
+.c8f7	32 0c		and ($0c),z	        and (zpt),z
+.c8f9	08		php		            php         ;save flags
+.c8fa	d9 5b 02	cmp $025b,y	            cmp absrlo,y    ;test result
+.c8fd	d0 fe		bne $c8fd	        bne *           ;failed not equal (non zero)
+.c8ff	68		pla		            pla         ;load status
+.c900	49 30		eor #$30	            eor #0|fao         ;invert expected flags + always on bits
+.c902	d9 5f 02	cmp $025f,y	            cmp absflo,y    ;test flags
+.c905	d0 fe		bne $c905	        bne *           ;failed not equal (non zero)
+.c907	e6 0c		inc $0c		        inc zpt
+.c909	c8		iny		        iny
+.c90a	c0 04		cpy #$04	        cpy #4
+.c90c	d0 e2		bne $c8f0	        bne tand1
+.c90e	88		dey		        dey
+.c90f	c6 0c		dec $0c		        dec zpt
+.c911					tand2
+.c911	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c913	48		pha		            pha         ;use stack to load status
+.c914	b9 53 02	lda $0253,y	            lda absANa,y    ;precharge accu
+.c917	28		plp		            plp
+.c918	32 0c		and ($0c),z	        and (zpt),z
+.c91a	08		php		            php         ;save flags
+.c91b	d9 5b 02	cmp $025b,y	            cmp absrlo,y    ;test result
+.c91e	d0 fe		bne $c91e	        bne *           ;failed not equal (non zero)
+.c920	68		pla		            pla         ;load status
+.c921	49 7d		eor #$7d	            eor #$ff-fnz|fao         ;invert expected flags + always on bits
+.c923	d9 5f 02	cmp $025f,y	            cmp absflo,y    ;test flags
+.c926	d0 fe		bne $c926	        bne *           ;failed not equal (non zero)
+.c928	c6 0c		dec $0c		        dec zpt
+.c92a	88		dey		        dey
+.c92b	10 e4		bpl $c911	        bpl tand2
+
+.c92d	a0 00		ldy #$00	        ldy #0      ;EOR
+.c92f	a5 42		lda $42		        lda indEO   ;set indirect address
+.c931	85 0c		sta $0c		        sta zpt
+.c933	a5 43		lda $43		        lda indEO+1
+.c935	85 0d		sta $0d		        sta zpt+1
+.c937					teor1
+.c937	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c939	48		pha		            pha         ;use stack to load status
+.c93a	b9 57 02	lda $0257,y	            lda absEOa,y    ;precharge accu
+.c93d	28		plp		            plp
+.c93e	52 0c		eor ($0c),z	        eor (zpt),z
+.c940	08		php		            php         ;save flags
+.c941	d9 5b 02	cmp $025b,y	            cmp absrlo,y    ;test result
+.c944	d0 fe		bne $c944	        bne *           ;failed not equal (non zero)
+.c946	68		pla		            pla         ;load status
+.c947	49 30		eor #$30	            eor #0|fao         ;invert expected flags + always on bits
+.c949	d9 5f 02	cmp $025f,y	            cmp absflo,y    ;test flags
+.c94c	d0 fe		bne $c94c	        bne *           ;failed not equal (non zero)
+.c94e	e6 0c		inc $0c		        inc zpt
+.c950	c8		iny		        iny
+.c951	c0 04		cpy #$04	        cpy #4
+.c953	d0 e2		bne $c937	        bne teor1
+.c955	88		dey		        dey
+.c956	c6 0c		dec $0c		        dec zpt
+.c958					teor2
+.c958	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c95a	48		pha		            pha         ;use stack to load status
+.c95b	b9 57 02	lda $0257,y	            lda absEOa,y    ;precharge accu
+.c95e	28		plp		            plp
+.c95f	52 0c		eor ($0c),z	        eor (zpt),z
+.c961	08		php		            php         ;save flags
+.c962	d9 5b 02	cmp $025b,y	            cmp absrlo,y    ;test result
+.c965	d0 fe		bne $c965	        bne *           ;failed not equal (non zero)
+.c967	68		pla		            pla         ;load status
+.c968	49 7d		eor #$7d	            eor #$ff-fnz|fao         ;invert expected flags + always on bits
+.c96a	d9 5f 02	cmp $025f,y	            cmp absflo,y    ;test flags
+.c96d	d0 fe		bne $c96d	        bne *           ;failed not equal (non zero)
+.c96f	c6 0c		dec $0c		        dec zpt
+.c971	88		dey		        dey
+.c972	10 e4		bpl $c958	        bpl teor2
+
+.c974	a0 00		ldy #$00	        ldy #0      ;ORA
+.c976	a5 4a		lda $4a		        lda indOR   ;set indirect address
+.c978	85 0c		sta $0c		        sta zpt
+.c97a	a5 4b		lda $4b		        lda indOR+1
+.c97c	85 0d		sta $0d		        sta zpt+1
+.c97e					tora1
+.c97e	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c980	48		pha		            pha         ;use stack to load status
+.c981	b9 4f 02	lda $024f,y	            lda absORa,y    ;precharge accu
+.c984	28		plp		            plp
+.c985	12 0c		ora ($0c),z	        ora (zpt),z
+.c987	08		php		            php         ;save flags
+.c988	d9 5b 02	cmp $025b,y	            cmp absrlo,y    ;test result
+.c98b	d0 fe		bne $c98b	        bne *           ;failed not equal (non zero)
+.c98d	68		pla		            pla         ;load status
+.c98e	49 30		eor #$30	            eor #0|fao         ;invert expected flags + always on bits
+.c990	d9 5f 02	cmp $025f,y	            cmp absflo,y    ;test flags
+.c993	d0 fe		bne $c993	        bne *           ;failed not equal (non zero)
+.c995	e6 0c		inc $0c		        inc zpt
+.c997	c8		iny		        iny
+.c998	c0 04		cpy #$04	        cpy #4
+.c99a	d0 e2		bne $c97e	        bne tora1
+.c99c	88		dey		        dey
+.c99d	c6 0c		dec $0c		        dec zpt
+.c99f					tora2
+.c99f	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.c9a1	48		pha		            pha         ;use stack to load status
+.c9a2	b9 4f 02	lda $024f,y	            lda absORa,y    ;precharge accu
+.c9a5	28		plp		            plp
+.c9a6	12 0c		ora ($0c),z	        ora (zpt),z
+.c9a8	08		php		            php         ;save flags
+.c9a9	d9 5b 02	cmp $025b,y	            cmp absrlo,y    ;test result
+.c9ac	d0 fe		bne $c9ac	        bne *           ;failed not equal (non zero)
+.c9ae	68		pla		            pla         ;load status
+.c9af	49 7d		eor #$7d	            eor #$ff-fnz|fao         ;invert expected flags + always on bits
+.c9b1	d9 5f 02	cmp $025f,y	            cmp absflo,y    ;test flags
+.c9b4	d0 fe		bne $c9b4	        bne *           ;failed not equal (non zero)
+.c9b6	c6 0c		dec $0c		        dec zpt
+.c9b8	88		dey		        dey
+.c9b9	10 e4		bpl $c99f	        bpl tora2
+
+.c9bb	e0 42		cpx #$42	        cpx #$42
+.c9bd	d0 fe		bne $c9bd	        bne *           ;failed not equal (non zero)
+.c9bf	ba		tsx		        tsx
+.c9c0	e0 ff		cpx #$ff	        cpx #$ff
+.c9c2	d0 fe		bne $c9c2	        bne *           ;failed not equal (non zero)
+.c9c4	ad 02 02	lda $0202	            lda test_case   ;previous test
+.c9c7	c9 0f		cmp #$0f	            cmp #test_num
+.c9c9	d0 fe		bne $c9c9	        bne *           ;failed not equal (non zero)
+=16					test_num    .var test_num + 1
+.c9cb	a9 10		lda #$10	            lda #test_num   ;*** next tests' number
+.c9cd	8d 02 02	sta $0202	            sta test_case
+					            ;check_ram       ;uncomment to find altered RAM after each test
+
+					    .if I_flag == 3
+.c9d0	58		cli		        cli
+					    .endif
+
+					; jump indirect (test page cross bug is fixed)
+.c9d1	a2 03		ldx #$03	        ldx #3          ;prepare table
+.c9d3	bd c9 ca	lda $cac9,x	ji1     lda ji_adr,x
+.c9d6	9d fd 02	sta $02fd,x	        sta ji_tab,x
+.c9d9	ca		dex		        dex
+.c9da	10 f7		bpl $c9d3	        bpl ji1
+.c9dc	a9 cc		lda #$cc	        lda #>(ji_px) ;high address if page cross bug
+.c9de	8d 00 02	sta $0200	        sta pg_x
+.c9e1	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.c9e3	48		pha		            pha         ;use stack to load status
+.c9e4	28		plp		            plp
+.c9e5	a9 49		lda #$49	        lda #'I'
+.c9e7	a2 4e		ldx #$4e	        ldx #'N'
+.c9e9	a0 44		ldy #$44	        ldy #'D'        ;N=0, V=0, Z=0, C=0
+.c9eb	22 fd 02	jsr ($02fd)	        jsr (ji_tab)
+.c9ee	08		php		ji_ret  php             ;either SP or Y count will fail, if we do not hit
+.c9ef	88		dey		        dey
+.c9f0	88		dey		        dey
+.c9f1	88		dey		        dey
+.c9f2	28		plp		        plp
+.c9f3	f0 fe		beq $c9f3	        beq *           ;failed equal (zero)
+.c9f5	10 fe		bpl $c9f5	        bpl *           ;failed plus (bit 7 clear)
+.c9f7	90 fe		bcc $c9f7	        bcc *           ;failed carry clear
+.c9f9	50 fe		bvc $c9f9	        bvc *           ;failed overflow clear
+.c9fb	c9 e3		cmp #$e3	        cmp #('I'^$aa)  ;returned registers OK?
+.c9fd	d0 fe		bne $c9fd	        bne *           ;failed not equal (non zero)
+.c9ff	e0 4f		cpx #$4f	        cpx #('N'+1)
+.ca01	d0 fe		bne $ca01	        bne *           ;failed not equal (non zero)
+.ca03	c0 3e		cpy #$3e	        cpy #('D'-6)
+.ca05	d0 fe		bne $ca05	        bne *           ;failed not equal (non zero)
+.ca07	ba		tsx		        tsx             ;SP check
+.ca08	e0 ff		cpx #$ff	        cpx #$ff
+.ca0a	d0 fe		bne $ca0a	        bne *           ;failed not equal (non zero)
+.ca0c	ad 02 02	lda $0202	            lda test_case   ;previous test
+.ca0f	c9 10		cmp #$10	            cmp #test_num
+.ca11	d0 fe		bne $ca11	        bne *           ;failed not equal (non zero)
+=17					test_num    .var test_num + 1
+.ca13	a9 11		lda #$11	            lda #test_num   ;*** next tests' number
+.ca15	8d 02 02	sta $0202	            sta test_case
+					            ;check_ram       ;uncomment to find altered RAM after each test
+
+					; jump indexed indirect
+.ca18	a2 0b		ldx #$0b	        ldx #11         ;prepare table
+.ca1a	bd 03 cb	lda $cb03,x	jxi1    lda jxi_adr,x
+.ca1d	9d f9 02	sta $02f9,x	        sta jxi_tab,x
+.ca20	ca		dex		        dex
+.ca21	10 f7		bpl $ca1a	        bpl jxi1
+.ca23	a9 cc		lda #$cc	        lda #>(jxi_px) ;high address if page cross bug
+.ca25	8d 00 02	sta $0200	        sta pg_x
+.ca28	a9 00		lda #$00	            lda #0             ;allow test to change I-flag (no mask)
+.ca2a	48		pha		            pha         ;use stack to load status
+.ca2b	28		plp		            plp
+.ca2c	a9 58		lda #$58	        lda #'X'
+.ca2e	a2 04		ldx #$04	        ldx #4
+.ca30	a0 49		ldy #$49	        ldy #'I'        ;N=0, V=0, Z=0, C=0
+.ca32	23 f9 02	jsr ($02f9,x)	        jsr (jxi_tab,x)
+.ca35	08		php		jxi_ret php             ;either SP or Y count will fail, if we do not hit
+.ca36	88		dey		        dey
+.ca37	88		dey		        dey
+.ca38	88		dey		        dey
+.ca39	28		plp		        plp
+.ca3a	f0 fe		beq $ca3a	        beq *           ;failed equal (zero)
+.ca3c	10 fe		bpl $ca3c	        bpl *           ;failed plus (bit 7 clear)
+.ca3e	90 fe		bcc $ca3e	        bcc *           ;failed carry clear
+.ca40	50 fe		bvc $ca40	        bvc *           ;failed overflow clear
+.ca42	c9 f2		cmp #$f2	        cmp #('X'^$aa)  ;returned registers OK?
+.ca44	d0 fe		bne $ca44	        bne *           ;failed not equal (non zero)
+.ca46	e0 06		cpx #$06	        cpx #6
+.ca48	d0 fe		bne $ca48	        bne *           ;failed not equal (non zero)
+.ca4a	c0 43		cpy #$43	        cpy #('I'-6)
+.ca4c	d0 fe		bne $ca4c	        bne *           ;failed not equal (non zero)
+.ca4e	ba		tsx		        tsx             ;SP check
+.ca4f	e0 ff		cpx #$ff	        cpx #$ff
+.ca51	d0 fe		bne $ca51	        bne *           ;failed not equal (non zero)
+
+.ca53	a9 6f		lda #$6f	        lda #<(jxp_ok) ;test with index causing a page cross
+.ca55	8d 00 03	sta $0300	        sta jxp_tab
+.ca58	a9 ca		lda #$ca	        lda #>(jxp_ok)
+.ca5a	8d 01 03	sta $0301	        sta jxp_tab+1
+.ca5d	a9 6c		lda #$6c	        lda #<(jxp_px)
+.ca5f	8d 00 02	sta $0200	        sta pg_x
+.ca62	a9 ca		lda #$ca	        lda #>(jxp_px)
+.ca64	8d 01 02	sta $0201	        sta pg_x+1
+.ca67	a2 ff		ldx #$ff	        ldx #$ff
+.ca69	7c 01 02	jmp ($0201,x)	        jmp (jxp_tab-$ff,x)
+
+.ca6c					jxp_px
+.ca6c	4c 6c ca	jmp $ca6c	        jmp *           ;failed anyway
+
+.ca6f					jxp_ok
+.ca6f	ad 02 02	lda $0202	            lda test_case   ;previous test
+.ca72	c9 11		cmp #$11	            cmp #test_num
+.ca74	d0 fe		bne $ca74	        bne *           ;failed not equal (non zero)
+=18					test_num    .var test_num + 1
+.ca76	a9 12		lda #$12	            lda #test_num   ;*** next tests' number
+.ca78	8d 02 02	sta $0202	            sta test_case
+					            ;check_ram       ;uncomment to find altered RAM after each test
+
+					; 16-bit inrement/decrement INW/DEW zp
+.ca7b					inwdewtest
+.ca7b	a2 00		ldx #$00	        ldx #$00
+.ca7d	a0 00		ldy #$00	        ldy #$00
+.ca7f	86 0c		stx $0c		        stx zpt+0
+.ca81	84 0d		sty $0d		        sty zpt+1
+
+.ca83	e4 0c		cpx $0c		chkinw  cpx zpt+0
+.ca85	d0 fe		bne $ca85	        bne *           ;failed not equal (non zero)
+.ca87	c4 0d		cpy $0d		        cpy zpt+1
+.ca89	d0 fe		bne $ca89	        bne *           ;failed not equal (non zero)
+
+.ca8b	e3 0c		inw $0c		        inw zpt         ; increment test location
+.ca8d	e8		inx		        inx
+.ca8e	d0 f3		bne $ca83	        bne chkinw      ; haven't wrapped, check next value
+.ca90	c8		iny		        iny
+.ca91	d0 f0		bne $ca83	        bne chkinw      ; haven't wrapped, check next value
+
+					        ; pre-decrement back to 0xffff
+.ca93	c3 0c		dew $0c		        dew zpt
+.ca95	ca		dex		        dex
+.ca96	88		dey		        dey
+
+.ca97	e4 0c		cpx $0c		chkdew  cpx zpt+0
+.ca99	d0 fe		bne $ca99	        bne *           ;failed not equal (non zero)
+.ca9b	c4 0d		cpy $0d		        cpy zpt+1
+.ca9d	d0 fe		bne $ca9d	        bne *           ;failed not equal (non zero)
+
+.ca9f	c3 0c		dew $0c		        dew zpt         ; increment test location
+.caa1	ca		dex		        dex
+.caa2	e0 ff		cpx #$ff	        cpx #$ff        ; wrapped?
+.caa4	d0 f1		bne $ca97	        bne chkdew      ; haven't wrapped, check next value
+.caa6	88		dey		        dey
+.caa7	c0 ff		cpy #$ff	        cpy #$ff        ; wrapped?
+.caa9	d0 ec		bne $ca97	        bne chkdew      ; haven't wrapped, check next value
+.caab	ad 02 02	lda $0202	            lda test_case   ;previous test
+.caae	c9 12		cmp #$12	            cmp #test_num
+.cab0	d0 fe		bne $cab0	        bne *           ;failed not equal (non zero)
+=19					test_num    .var test_num + 1
+.cab2	a9 13		lda #$13	            lda #test_num   ;*** next tests' number
+.cab4	8d 02 02	sta $0202	            sta test_case
+					            ;check_ram       ;uncomment to find altered RAM after each test
+
+.cab7	ad 02 02	lda $0202	        lda test_case
+.caba	c9 13		cmp #$13	        cmp #test_num
+.cabc	d0 fe		bne $cabc	        bne *           ;failed not equal (non zero)
+.cabe	a9 f0		lda #$f0	        lda #$f0        ;mark opcode testing complete
+.cac0	8d 02 02	sta $0202	        sta test_case
+
+					; final RAM integrity test
+					;   verifies that none of the previous tests has altered RAM outside of the
+					;   designated write areas.
+.cac3					        check_ram
+					; *** DEBUG INFO ***
+					; to debug checksum errors uncomment check_ram in the next_test macro to
+					; narrow down the responsible opcode.
+					; may give false errors when monitor, OS or other background activity is
+					; allowed during previous tests.
+
+
+					; S U C C E S S ************************************************
+					; -------------
+.cac3	4c c3 ca	jmp $cac3	        jmp *           ;test passed, no errors
+					; -------------
+					; S U C C E S S ************************************************
+.cac6	4c 00 c0	jmp $c000	        jmp start       ;run again
+
+
+					; target for the jump indirect test
+>cac9	cf ca				ji_adr  .word test_ji
+>cacb	ee c9				        .word ji_ret
+
+.cacd	88		dey		        dey
+.cace	88		dey		        dey
+.cacf					test_ji
+.cacf	08		php		        php             ;either SP or Y count will fail, if we do not hit
+.cad0	88		dey		        dey
+.cad1	88		dey		        dey
+.cad2	88		dey		        dey
+.cad3	28		plp		        plp
+.cad4	b0 fe		bcs $cad4	        bcs *           ;failed carry set
+.cad6	70 fe		bvs $cad6	        bvs *           ;failed overflow set
+.cad8	30 fe		bmi $cad8	        bmi *           ;failed minus (bit 7 set)
+.cada	f0 fe		beq $cada	        beq *           ;failed equal (zero)
+.cadc	c9 49		cmp #$49	        cmp #'I'        ;registers loaded?
+.cade	d0 fe		bne $cade	        bne *           ;failed not equal (non zero)
+.cae0	e0 4e		cpx #$4e	        cpx #'N'
+.cae2	d0 fe		bne $cae2	        bne *           ;failed not equal (non zero)
+.cae4	c0 41		cpy #$41	        cpy #('D'-3)
+.cae6	d0 fe		bne $cae6	        bne *           ;failed not equal (non zero)
+.cae8	48		pha		        pha             ;save a,x
+.cae9	8a		txa		        txa
+.caea	48		pha		        pha
+.caeb	ba		tsx		        tsx
+.caec	e0 fb		cpx #$fb	        cpx #$fb        ;check SP
+.caee	d0 fe		bne $caee	        bne *           ;failed not equal (non zero)
+.caf0	68		pla		        pla             ;restore x
+.caf1	aa		tax		        tax
+.caf2	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.caf4	48		pha		            pha         ;use stack to load status
+.caf5	28		plp		            plp
+.caf6	68		pla		        pla             ;restore a
+.caf7	e8		inx		        inx             ;return registers with modifications
+.caf8	49 aa		eor #$aa	        eor #$aa        ;N=1, V=1, Z=0, C=1
+.cafa	60		rts		        rts
+.cafb	ea		nop		        nop
+.cafc	ea		nop		        nop
+.cafd	4c fd ca	jmp $cafd	        jmp *           ;failed anyway
+.cb00	4c 00 c0	jmp $c000	        jmp start       ;catastrophic error - cannot continue
+
+					; target for the jsr indirect indexed test
+>cb03	48 cb				jxi_adr .word  trap_ind
+>cb05	48 cb				        .word  trap_ind
+>cb07	11 cb				        .word  test_jxi    ;+4
+>cb09	35 ca				        .word  jxi_ret     ;+6
+>cb0b	48 cb				        .word  trap_ind
+>cb0d	48 cb				        .word  trap_ind
+
+.cb0f	88		dey		        dey
+.cb10	88		dey		        dey
+.cb11					test_jxi
+.cb11	08		php		        php             ;either SP or Y count will fail, if we do not hit
+.cb12	88		dey		        dey
+.cb13	88		dey		        dey
+.cb14	88		dey		        dey
+.cb15	28		plp		        plp
+.cb16	b0 fe		bcs $cb16	        bcs *           ;failed carry set
+.cb18	70 fe		bvs $cb18	        bvs *           ;failed overflow set
+.cb1a	30 fe		bmi $cb1a	        bmi *           ;failed minus (bit 7 set)
+.cb1c	f0 fe		beq $cb1c	        beq *           ;failed equal (zero)
+.cb1e	c9 58		cmp #$58	        cmp #'X'        ;registers loaded?
+.cb20	d0 fe		bne $cb20	        bne *           ;failed not equal (non zero)
+.cb22	e0 04		cpx #$04	        cpx #4
+.cb24	d0 fe		bne $cb24	        bne *           ;failed not equal (non zero)
+.cb26	c0 46		cpy #$46	        cpy #('I'-3)
+.cb28	d0 fe		bne $cb28	        bne *           ;failed not equal (non zero)
+.cb2a	48		pha		        pha             ;save a,x
+.cb2b	8a		txa		        txa
+.cb2c	48		pha		        pha
+.cb2d	ba		tsx		        tsx
+.cb2e	e0 fb		cpx #$fb	        cpx #$fb        ;check SP
+.cb30	d0 fe		bne $cb30	        bne *           ;failed not equal (non zero)
+.cb32	68		pla		        pla             ;restore x
+.cb33	aa		tax		        tax
+.cb34	a9 ff		lda #$ff	            lda #$ff             ;allow test to change I-flag (no mask)
+.cb36	48		pha		            pha         ;use stack to load status
+.cb37	28		plp		            plp
+.cb38	68		pla		        pla             ;restore a
+.cb39	e8		inx		        inx             ;return registers with modifications
+.cb3a	e8		inx		        inx
+.cb3b	49 aa		eor #$aa	        eor #$aa        ;N=1, V=1, Z=0, C=1
+.cb3d	60		rts		        rts
+.cb3e	ea		nop		        nop
+.cb3f	ea		nop		        nop
+.cb40	4c 40 cb	jmp $cb40	        jmp *           ;failed anyway
+.cb43	4c 00 c0	jmp $c000	        jmp start       ;catastrophic error - cannot continue
+
+					; JSR (abs,x) with bad x
+.cb46	ea		nop		        nop
+.cb47	ea		nop		        nop
+.cb48					trap_ind
+.cb48	ea		nop		        nop
+.cb49	ea		nop		        nop
+.cb4a	4c 4a cb	jmp $cb4a	        jmp *           ;failed anyway
+.cb4d	4c 00 c0	jmp $c000	        jmp start       ;catastrophic error - cannot continue
+
+					;trap in case of unexpected IRQ, NMI, BRK, RESET
+.cb50					nmi_trap
+.cb50	4c 50 cb	jmp $cb50	        jmp *           ;failed anyway
+.cb53	4c 00 c0	jmp $c000	        jmp start       ;catastrophic error - cannot continue
+.cb56					res_trap
+.cb56	4c 56 cb	jmp $cb56	        jmp *           ;failed anyway
+.cb59	4c 00 c0	jmp $c000	        jmp start       ;catastrophic error - cannot continue
+.cb5c					irq_trap
+.cb5c	4c 5c cb	jmp $cb5c	        jmp *           ;failed anyway
+.cb5f	4c 00 c0	jmp $c000	        jmp start       ;catastrophic error - cannot continue
+
+					    .if report == 1
+					    .endif
+
+					;copy of data to initialize BSS segment
+					    .if load_data_direct != 1
+.cb62					zp_init
+>cb62	c3 82 41 00			zp1_    .byte  $c3,$82,$41,0   ;test patterns for LDx BIT ROL ROR ASL LSR
+>cb66	7f				zp7f_   .byte  $7f             ;test pattern for compare
+					;logical zeropage operands
+>cb67	00 1f 71 80			zpOR_   .byte  0,$1f,$71,$80   ;test pattern for OR
+>cb6b	0f ff 7f 80			zpAN_   .byte  $0f,$ff,$7f,$80 ;test pattern for AND
+>cb6f	ff 0f 8f 8f			zpEO_   .byte  $ff,$0f,$8f,$8f ;test pattern for EOR
+					;indirect addressing pointers
+>cb73	10 02				ind1_   .word  abs1            ;indirect pointer to pattern in absolute memory
+>cb75	11 02				        .word  abs1+1
+>cb77	12 02				        .word  abs1+2
+>cb79	13 02				        .word  abs1+3
+>cb7b	14 02				        .word  abs7f
+>cb7d	18 01				inw1_   .word  abs1-$f8        ;indirect pointer for wrap-test pattern
+>cb7f	05 02				indt_   .word  abst            ;indirect pointer to store area in absolute memory
+>cb81	06 02				        .word  abst+1
+>cb83	07 02				        .word  abst+2
+>cb85	08 02				        .word  abst+3
+>cb87	0d 01				inwt_   .word  abst-$f8        ;indirect pointer for wrap-test store
+>cb89	47 02				indAN_  .word  absAN           ;indirect pointer to AND pattern in absolute memory
+>cb8b	48 02				        .word  absAN+1
+>cb8d	49 02				        .word  absAN+2
+>cb8f	4a 02				        .word  absAN+3
+>cb91	4b 02				indEO_  .word  absEO           ;indirect pointer to EOR pattern in absolute memory
+>cb93	4c 02				        .word  absEO+1
+>cb95	4d 02				        .word  absEO+2
+>cb97	4e 02				        .word  absEO+3
+>cb99	43 02				indOR_  .word  absOR           ;indirect pointer to OR pattern in absolute memory
+>cb9b	44 02				        .word  absOR+1
+>cb9d	45 02				        .word  absOR+2
+>cb9f	46 02				        .word  absOR+3
+					;add/subtract indirect pointers
+>cba1	05 02				adi2_   .word  ada2            ;indirect pointer to operand 2 in absolute memory
+>cba3	06 02				sbi2_   .word  sba2            ;indirect pointer to complemented operand 2 (SBC)
+>cba5	06 01				adiy2_  .word  ada2-$ff        ;with offset for indirect indexed
+>cba7	07 01				sbiy2_  .word  sba2-$ff
+.cba9					zp_end
+					    .if (zp_end - zp_init) != (zp_bss_end - zp_bss)
+					    .endif
+.cba9					data_init
+.cba9	69 00		adc #$00	ex_adc_ adc #0              ;execute immediate opcodes
+.cbab	60		rts		        rts
+.cbac	e9 00		sbc #$00	ex_sbc_ sbc #0              ;execute immediate opcodes
+.cbae	60		rts		        rts
+>cbaf	c3 82 41 00			abs1_   .byte  $c3,$82,$41,0   ;test patterns for LDx BIT ROL ROR ASL LSR
+>cbb3	7f				abs7f_  .byte  $7f             ;test pattern for compare
+					;loads
+>cbb4	80 80 00 02			fLDx_   .byte  fn,fn,0,fz      ;expected flags for load
+					;shifts
+.cbb8					rASL_                       ;expected result ASL & ROL -carry
+>cbb8	86 04 82 00			rROL_   .byte  $86,$04,$82,0   ; "
+>cbbc	87 05 83 01			rROLc_  .byte  $87,$05,$83,1   ;expected result ROL +carry
+.cbc0					rLSR_                       ;expected result LSR & ROR -carry
+>cbc0	61 41 20 00			rROR_   .byte  $61,$41,$20,0   ; "
+>cbc4	e1 c1 a0 80			rRORc_  .byte  $e1,$c1,$a0,$80 ;expected result ROR +carry
+.cbc8					fASL_                       ;expected flags for shifts
+>cbc8	81 01 80 02			fROL_   .byte  fnc,fc,fn,fz    ;no carry in
+>cbcc	81 01 80 00			fROLc_  .byte  fnc,fc,fn,0     ;carry in
+.cbd0					fLSR_
+>cbd0	01 00 01 02			fROR_   .byte  fc,0,fc,fz      ;no carry in
+>cbd4	81 80 81 80			fRORc_  .byte  fnc,fn,fnc,fn   ;carry in
+					;increments (decrements)
+>cbd8	7f 80 ff 00 01			rINC_   .byte  $7f,$80,$ff,0,1 ;expected result for INC/DEC
+>cbdd	00 80 80 02 00			fINC_   .byte  0,fn,fn,fz,0    ;expected flags for INC/DEC
+					;logical memory operand
+>cbe2	00 1f 71 80			absOR_  .byte  0,$1f,$71,$80   ;test pattern for OR
+>cbe6	0f ff 7f 80			absAN_  .byte  $0f,$ff,$7f,$80 ;test pattern for AND
+>cbea	ff 0f 8f 8f			absEO_  .byte  $ff,$0f,$8f,$8f ;test pattern for EOR
+					;logical accu operand
+>cbee	00 f1 1f 00			absORa_ .byte  0,$f1,$1f,0     ;test pattern for OR
+>cbf2	f0 ff ff ff			absANa_ .byte  $f0,$ff,$ff,$ff ;test pattern for AND
+>cbf6	ff f0 f0 0f			absEOa_ .byte  $ff,$f0,$f0,$0f ;test pattern for EOR
+					;logical results
+>cbfa	00 ff 7f 80			absrlo_ .byte  0,$ff,$7f,$80
+>cbfe	02 80 00 80			absflo_ .byte  fz,fn,0,fn
+.cc02					data_end
+					    .if (data_end - data_init) != (data_bss_end - data_bss)
+					    .endif
+
+.cc02					vec_init
+>cc02	50 cb				        .word  nmi_trap
+>cc04	56 cb				        .word  res_trap
+>cc06	5c cb				        .word  irq_trap
+=$fffa					vec_bss = $fffa
+					    .endif                   ;end of RAM init data
+
+					; code at end of image due to the need to add blank space as required
+					    .if ($ff & (ji_ret - * - 2)) < ($ff & (jxi_ret - * - 2))
+					    .else
+					; JMP (abs,x) when $xxff and $xx00 are from same page
+>cc08					        .fill  <(jxi_ret - * - 2)
+.cc33	ea		nop		        nop
+.cc34	ea		nop		        nop
+.cc35	ea		nop		jxi_px  nop             ;low address byte matched with jxi_ret
+.cc36	ea		nop		        nop
+.cc37	4c 37 cc	jmp $cc37	        jmp *           ;failed anyway
+
+					; JMP (abs) when $xxff and $xx00 are from same page
+>cc3a					        .fill  <(ji_ret - * - 2)
+.ccec	ea		nop		        nop
+.cced	ea		nop		        nop
+.ccee	ea		nop		ji_px   nop             ;low address byte matched with ji_ret
+.ccef	ea		nop		        nop
+.ccf0	4c f0 cc	jmp $ccf0	        jmp *           ;failed anyway
+					    .endif
+
+					*=      $fffa ; vectors
+
+					    .if (ROM_vectors = 1)
+>fffa	50 cb				        .word  nmi_trap
+>fffc	00 c0				        .word  start
+>fffe	5c cb				        .word  irq_trap
+					    .endif
+
+					        .end
+
+;******  End of listing

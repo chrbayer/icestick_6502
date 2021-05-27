@@ -33,5 +33,9 @@ tb_soc_65C02_decimal_test: $(SOURCES)
 	$(VLOG) -D icarus -D SIM -D VERIFICATION -D DECIMAL_TEST_65C02 -o tb_soc_65C02_decimal_test $(SOURCES)
 	./tb_soc_65C02_decimal_test -lxt2-space
 
+tb_soc_65CE02_opcodes_test: $(SOURCES)
+	$(VLOG) -D icarus -D SIM -D VERIFICATION -D VERIFICATION_65CE02 -o tb_soc_65CE02_opcodes_test $(SOURCES)
+	./tb_soc_65CE02_opcodes_test -lxt2-space
+
 clean:
-	rm -rf $(TOP) tb_soc_6502_verification tb_soc_65C02_verification tb_soc_65C02_decimal_test rom.hex *.vcd *.lxt
+	rm -rf $(TOP) tb_soc_6502_verification tb_soc_65C02_verification tb_soc_65C02_decimal_test tb_soc_65CE02_opcodes_test rom.hex *.vcd *.lxt
