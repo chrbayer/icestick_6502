@@ -1444,7 +1444,7 @@ always @(posedge clk )
 always @(posedge clk )
      if( state == DECODE && RDY )
         casex( IR )
-                8'b1101_0010,   // CMP (zp)
+                8'b110x_0010,   // CMP (zp), CPZ
                 8'b11x0_0x00,   // CPX, CPY (imm/zp)
                 8'b11x0_1100,   // CPX, CPY (abs)
                 8'b110x_xx01,   // CMP
