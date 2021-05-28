@@ -148,10 +148,10 @@ reg SP_inc;             // Increment stack pointer
 reg SP_dec;             // Decrement stack pointer
 reg SPH_inc;            // Increment stack pointer high byte
 
-reg [3:0] src_reg;      // source register index
-reg [3:0] dst_reg;      // destination register index
+reg [3:0] src_reg = SEL_A;      // source register index
+reg [3:0] dst_reg = SEL_A;      // destination register index
+reg [3:0] index_sel = SEL_X;    // index register X, Y or Z
 
-reg [3:0] index_sel;    // index register X, Y or Z
 reg load_reg;           // loading a register (A, X, Y, S) in this instruction
 reg inc;                // increment
 reg word;               // word operation (INW/DEW/ASW/ROW)
@@ -496,7 +496,7 @@ always @(posedge clk)
  */
 always @(posedge clk)
     if( RDY )
-        if( E ) SPL <= SPL_temp + SP_inc - SP_dec;
+        if( E ) { SPH, SPL } <= { SPH_temp, SPL_temp + SP_inc - SP_dec };
         else { SPH, SPL } <= { SPH_temp + SPH_inc, SPL_temp } + SP_inc - SP_dec;
 
 /*
@@ -1052,7 +1052,7 @@ always @(posedge clk or posedge reset)
         state <= BRK0;
         AXYZB[SEL_B] <= ZEROPAGE;
         AXYZB[SEL_Z] <= ZDEFAULT;
-        SPH <= STACKPAGE;
+        SPH_temp <= STACKPAGE;
         E <= 1;
     end
     else if( RDY ) case( state )
