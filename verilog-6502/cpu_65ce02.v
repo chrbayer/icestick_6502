@@ -148,9 +148,9 @@ reg SP_inc;             // Increment stack pointer
 reg SP_dec;             // Decrement stack pointer
 reg SPH_inc;            // Increment stack pointer high byte
 
-reg [3:0] src_reg = SEL_A;      // source register index
-reg [3:0] dst_reg = SEL_A;      // destination register index
-reg [3:0] index_sel = SEL_X;    // index register X, Y or Z
+reg [3:0] src_reg;      // source register index
+reg [3:0] dst_reg;      // destination register index
+reg [3:0] index_sel;    // index register X, Y or Z
 
 reg load_reg;           // loading a register (A, X, Y, S) in this instruction
 reg inc;                // increment
@@ -437,11 +437,13 @@ always @*
  * SPH_temp.
  */
 always @*
-    case ( state )
-        DECODE:         SPH_temp = ( regsel == SEL_SPH && write_register ) ? AO : SPH;
+    if ( reset ) SPH_temp = 8'h01;
+    else
+        case ( state )
+            DECODE:         SPH_temp = ( regsel == SEL_SPH && write_register ) ? AO : SPH;
 
-        default:        SPH_temp = SPH;
-    endcase
+            default:        SPH_temp = SPH;
+        endcase
 
 /*
  * Determine wether we need SP_inc to increment stack pointer
@@ -710,9 +712,14 @@ assign AZ1 = AZ;
  * ALU.
  */
 always @(posedge clk)
-    if( write_register & RDY )
-        if ( regsel != SEL_SPL && regsel != SEL_SPH )
-            AXYZB[regsel] <= AO;
+    if ( reset ) begin
+        AXYZB[SEL_Z] <= ZDEFAULT;
+        AXYZB[SEL_B] <= ZEROPAGE;
+    end
+    else
+        if( write_register & RDY )
+            if ( regsel != SEL_SPL && regsel != SEL_SPH )
+                AXYZB[regsel] <= AO;
 
 /*
  * register select logic. This determines which of the A, X, Y or
@@ -989,7 +996,9 @@ always @(posedge clk )
  * Update E flag
  */
 always @(posedge clk )
-    if( state == DECODE ) begin
+    if( reset )
+        E <= 1;
+    else if( state == DECODE ) begin
         if( see ) E <= 1;
         if( cle ) E <= 0;
     end
@@ -1047,14 +1056,7 @@ parameter
  * Microcode state machine
  */
 always @(posedge clk or posedge reset)
-    if( reset )
-    begin
-        state <= BRK0;
-        AXYZB[SEL_B] <= ZEROPAGE;
-        AXYZB[SEL_Z] <= ZDEFAULT;
-        SPH_temp <= STACKPAGE;
-        E <= 1;
-    end
+    if( reset ) state <= BRK0;
     else if( RDY ) case( state )
         DECODE  :
             casex ( IR )
@@ -1235,102 +1237,108 @@ always @(posedge clk)
         endcase
 
 always @(posedge clk)
-     if( state == DECODE && RDY )
-        casex( IR )
-                8'b1110_1000,   // INX
-                8'b1100_1010,   // DEX
-                8'b1111_1010,   // PLX
-                8'b1010_0010,   // LDX imm
-                8'b101x_x110,   // LDX
-                8'b101x_1x10:   // LDX, TAX, TSX
-                                dst_reg <= SEL_X;
+     if ( reset ) dst_reg <= SEL_A;
+     else
+        if( state == DECODE && RDY )
+            casex( IR )
+                    8'b1110_1000,   // INX
+                    8'b1100_1010,   // DEX
+                    8'b1111_1010,   // PLX
+                    8'b1010_0010,   // LDX imm
+                    8'b101x_x110,   // LDX
+                    8'b101x_1x10:   // LDX, TAX, TSX
+                                    dst_reg <= SEL_X;
 
-                8'b0101_1011:   // TAB
-                                dst_reg <= SEL_B;
+                    8'b0101_1011:   // TAB
+                                    dst_reg <= SEL_B;
 
-                8'b1001_1010:   // TXS
-                                dst_reg <= SEL_SPL;
+                    8'b1001_1010:   // TXS
+                                    dst_reg <= SEL_SPL;
 
-                8'b0010_1011:   // TYS
-                                dst_reg <= SEL_SPH;
+                    8'b0010_1011:   // TYS
+                                    dst_reg <= SEL_SPH;
 
-                8'b1x00_1000,   // DEY, INY
-                8'b0000_1011,   // TSY
-                8'b0111_1010,   // PLY
-                8'b101x_x100,   // LDY
-                8'b1010_x000:   // LDY imm, TAY
-                                dst_reg <= SEL_Y;
+                    8'b1x00_1000,   // DEY, INY
+                    8'b0000_1011,   // TSY
+                    8'b0111_1010,   // PLY
+                    8'b101x_x100,   // LDY
+                    8'b1010_x000:   // LDY imm, TAY
+                                    dst_reg <= SEL_Y;
 
-                8'b00x1_1011,   // DEZ, INZ
-                8'b0100_1011,   // TAZ
-                8'b1010_0011,   // LDZ imm
-                8'b101x_1011,   // LDZ
-                8'b1111_1011:   // PLZ
-                                dst_reg <= SEL_Z;
+                    8'b00x1_1011,   // DEZ, INZ
+                    8'b0100_1011,   // TAZ
+                    8'b1010_0011,   // LDZ imm
+                    8'b101x_1011,   // LDZ
+                    8'b1111_1011:   // PLZ
+                                    dst_reg <= SEL_Z;
 
-                default:        dst_reg <= SEL_A;
-        endcase
-
-always @(posedge clk)
-     if( state == DECODE && RDY )
-        casex( IR )
-                8'b1011_1010:   // TSX
-                                src_reg <= SEL_SPL;
-
-                8'b0000_1011:   // TSY
-                                src_reg <= SEL_SPH;
-
-                8'b100x_0110,   // STX
-                8'b1001_1011,   // STX
-                8'b1000_1110,   // STX
-                8'b100x_1010,   // TXA, TXS
-                8'b1110_xx00,   // INX, CPX
-                8'b110x_1010:   // PHX, DEX
-                                src_reg <= SEL_X;
-
-                8'b100x_0100,   // STY
-                8'b1000_1100,   // STY
-                8'b1000_1011,   // STY
-                8'b1001_1000,   // TYA
-                8'b1100_xx00,   // CPY
-                8'b0101_1010,   // PHY
-                8'b0010_1011,   // TYS
-                8'b1x00_1000:   // DEY, INY
-                                src_reg <= SEL_Y;
-
-                8'b011x_0100,   // STZ
-                8'b1001_1110,   // STZ
-                8'b00x1_1011,   // DEZ, INZ
-                8'b0110_1011,   // TZA
-                8'b1x01_1100,   // STZ, CPZ
-                8'b1101_1011,   // PHZ
-                8'b1100_0010,   // CPZ
-                8'b1101_0100:   // CPZ
-                                src_reg <= SEL_Z;
-
-                8'b0111_1011:   // TBA
-                                src_reg <= SEL_B;
-
-                default:        src_reg <= SEL_A;
-        endcase
+                    default:        dst_reg <= SEL_A;
+            endcase
 
 always @(posedge clk)
-     if( state == DECODE && RDY )
-        casex( IR )
-                8'bxxx1_0001,   // INDY
-                8'b10x1_0110,   // LDX zp,Y / STX zp,Y
-                8'b1011_1110,   // LDX abs,Y
-                8'bxxx1_1001,   // abs, Y
-                8'b1001_1011,   // STX abs,Y
-                8'b1000_0010,   // STA SP, Y
-                8'b1110_0010:   // LDA SP, Y
-                                index_sel <= SEL_Y;
+     if ( reset ) src_reg <= SEL_A;
+     else
+        if( state == DECODE && RDY )
+            casex( IR )
+                    8'b1011_1010:   // TSX
+                                    src_reg <= SEL_SPL;
 
-                8'bxxx1_0010:   // INDZ
-                                index_sel <= SEL_Z;
+                    8'b0000_1011:   // TSY
+                                    src_reg <= SEL_SPH;
 
-                default:        index_sel <= SEL_X;
-        endcase
+                    8'b100x_0110,   // STX
+                    8'b1001_1011,   // STX
+                    8'b1000_1110,   // STX
+                    8'b100x_1010,   // TXA, TXS
+                    8'b1110_xx00,   // INX, CPX
+                    8'b110x_1010:   // PHX, DEX
+                                    src_reg <= SEL_X;
+
+                    8'b100x_0100,   // STY
+                    8'b1000_1100,   // STY
+                    8'b1000_1011,   // STY
+                    8'b1001_1000,   // TYA
+                    8'b1100_xx00,   // CPY
+                    8'b0101_1010,   // PHY
+                    8'b0010_1011,   // TYS
+                    8'b1x00_1000:   // DEY, INY
+                                    src_reg <= SEL_Y;
+
+                    8'b011x_0100,   // STZ
+                    8'b1001_1110,   // STZ
+                    8'b00x1_1011,   // DEZ, INZ
+                    8'b0110_1011,   // TZA
+                    8'b1x01_1100,   // STZ, CPZ
+                    8'b1101_1011,   // PHZ
+                    8'b1100_0010,   // CPZ
+                    8'b1101_0100:   // CPZ
+                                    src_reg <= SEL_Z;
+
+                    8'b0111_1011:   // TBA
+                                    src_reg <= SEL_B;
+
+                    default:        src_reg <= SEL_A;
+            endcase
+
+always @(posedge clk)
+     if ( reset ) index_sel <= SEL_X;
+     else
+        if( state == DECODE && RDY )
+            casex( IR )
+                    8'bxxx1_0001,   // INDY
+                    8'b10x1_0110,   // LDX zp,Y / STX zp,Y
+                    8'b1011_1110,   // LDX abs,Y
+                    8'bxxx1_1001,   // abs, Y
+                    8'b1001_1011,   // STX abs,Y
+                    8'b1000_0010,   // STA SP, Y
+                    8'b1110_0010:   // LDA SP, Y
+                                    index_sel <= SEL_Y;
+
+                    8'bxxx1_0010:   // INDZ
+                                    index_sel <= SEL_Z;
+
+                    default:        index_sel <= SEL_X;
+            endcase
 
 
 always @(posedge clk)
