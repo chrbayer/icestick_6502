@@ -39,6 +39,9 @@ module tb_soc_6502;
 `ifdef DECIMAL_TEST_65C02
 		#34350000 $finish;
 `endif
+`ifdef VERIFICATION_65CE02
+		#12830000 $finish;
+`endif
 `else       // stop after 1 sec
 		#10000 $finish;
 `endif

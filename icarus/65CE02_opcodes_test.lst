@@ -1,7 +1,7 @@
 
 ; 64tass Turbo Assembler Macro V1.56.2625? listing file
 ; 64tass --m65ce02 --verbose-list -L map 65CE02_opcodes_test.t64
-; Fri May 28 01:00:43 2021
+; Fri May 28 13:24:46 2021
 
 ;Offset	;Hex		;Monitor	;Source
 
@@ -845,18 +845,18 @@
 					; Test phw variants
 .c263	f4 55 aa	phw #$aa55	        phw #$aa55      ; Should push $aa then $55
 .c266	68		pla		        pla
-.c267	c9 aa		cmp #$aa	        cmp #$aa
+.c267	c9 55		cmp #$55	        cmp #$55
 .c269	d0 fe		bne $c269	        bne *           ;failed not equal (non zero)
 .c26b	68		pla		        pla
-.c26c	c9 55		cmp #$55	        cmp #$55
+.c26c	c9 aa		cmp #$aa	        cmp #$aa
 .c26e	d0 fe		bne $c26e	        bne *           ;failed not equal (non zero)
 
 .c270	fc 10 02	phw $0210	        phw abs1
 .c273	68		pla		        pla
-.c274	cd 11 02	cmp $0211	        cmp abs1+1
+.c274	cd 10 02	cmp $0210	        cmp abs1+0
 .c277	d0 fe		bne $c277	        bne *           ;failed not equal (non zero)
 .c279	68		pla		        pla
-.c27a	cd 10 02	cmp $0210	        cmp abs1+0
+.c27a	cd 11 02	cmp $0211	        cmp abs1+1
 .c27d	d0 fe		bne $c27d	        bne *           ;failed not equal (non zero)
 
 					; Test rtn #imm
