@@ -1108,7 +1108,7 @@ always @(posedge clk or posedge reset)
                 8'b10x1_1011:   state <= ABSX0; // LDZ (BB), STX (9B)
                 8'b1000_1011:   state <= ABSX0; // STY (8B)
                 8'bx101_1010:   state <= PUSH0; // PHX/PHY
-                8'b1101_1010:   state <= PUSH0; // PHZ
+                8'b1101_1011:   state <= PUSH0; // PHZ
                 8'bx111_1010:   state <= PULL0; // PLX/PLY
                 8'b1111_1011:   state <= PULL0; // PLZ
                 8'bx0xx_1010:   state <= REG;   // <shift> A, TXA, ...
