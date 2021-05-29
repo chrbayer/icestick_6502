@@ -36,10 +36,8 @@ module soc_6502(
 
 	// RAM @ pages 00-0f
 	reg [7:0] ram_mem [0:4095];
-`ifdef VERIFICATION
 	initial
         $readmemh("null.hex", ram_mem);
-`endif
 	reg [7:0] ram_do;
 	always @(posedge clk)
 		if((CPU_WE == 1'b1) && (p0 == 1'b1))
@@ -89,6 +87,7 @@ module soc_6502(
 `endif
 	always @(posedge clk)
 		rom_do <= rom_mem[CPU_AB[13:0]];
+`ifdef SIM
 	initial
 `ifdef VERIFICATION_6502
 		$monitor("#%0t test_case = %0h", $time, ram_mem[512]);
@@ -101,6 +100,7 @@ module soc_6502(
 `endif
 `ifdef VERIFICATION_65CE02
 		$monitor("#%0t test_case = %0h", $time, ram_mem[514]);
+`endif
 `endif
 `else
     reg [7:0] rom_mem [0:4095];
