@@ -12,7 +12,7 @@ module acia_tx(
 	// sym rate counter for 115200bps @ 16MHz clk
     parameter SCW = 8;		// rate counter width
 	parameter sym_cnt = 139;	// rate count value
-	
+
 	// transmit machine
 	reg [8:0] tx_sr;
 	reg [3:0] tx_bcnt;
@@ -36,7 +36,7 @@ module acia_tx(
 					tx_busy <= 1'b1;
 					tx_sr <= {tx_dat,1'b0};
 					tx_bcnt <= 4'd9;
-					tx_rcnt <= sym_cnt;
+					tx_rcnt <= sym_cnt[SCW-1:0];
 				end
 			end
 			else
@@ -46,8 +46,8 @@ module acia_tx(
 					// shift out next bit and restart
 					tx_sr <= {1'b1,tx_sr[8:1]};
 					tx_bcnt <= tx_bcnt - 1;
-					tx_rcnt <= sym_cnt;
-					
+					tx_rcnt <= sym_cnt[SCW-1:0];
+
 					if(~|tx_bcnt)
 					begin
 						// done - return to inactive state
@@ -56,10 +56,10 @@ module acia_tx(
 				end
 				else
 					tx_rcnt <= tx_rcnt - 1;
-			end	
+			end
 		end
 	end
-	
+
 	// hook up output
-	assign tx_serial = tx_sr;
+	assign tx_serial = tx_sr[0];
 endmodule

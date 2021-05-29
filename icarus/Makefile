@@ -20,7 +20,7 @@ $(TOP).lxt: $(TOP)
 	./$(TOP) -lxt2-space
 
 $(TOP): tb_soc_6502.v $(SOURCES)
-	$(VLOG) -D icarus -D SIM -o $(TOP) $(SOURCES)
+	$(VLOG) -D icarus -D SIM -o $(TOP) tb_soc_6502.v $(SOURCES)
 
 tb_soc_6502_verification: tb_soc_6502.v $(SOURCES)
 	$(VLOG) -D icarus -D SIM -D VERIFICATION -D VERIFICATION_6502 -o tb_soc_6502_verification tb_soc_6502.v $(SOURCES)

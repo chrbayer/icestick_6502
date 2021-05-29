@@ -18,12 +18,12 @@ module acia(
     localparam clk_freq = 12000000;
     localparam sym_cnt = clk_freq / sym_rate;
 	localparam SCW = $clog2(sym_cnt);
-	
-	wire [SCW-1:0] sym_cntr = sym_cnt;
-	
+
+	wire [SCW-1:0] sym_cntr = sym_cnt[SCW-1:0];
+
 	// generate tx_start signal on write to register 1
 	wire tx_start = cs & rs & we;
-	
+
 	// load control register
 	reg [1:0] counter_divide_select, tx_start_control;
 	reg [2:0] word_select; // dummy
@@ -45,10 +45,10 @@ module acia(
 				counter_divide_select
 			} <= din;
 	end
-	
+
 	// acia reset generation
 	wire acia_rst = rst | (counter_divide_select == 2'b11);
-	
+
 	// load dout with either status or rx data
 	wire [7:0] rx_dat, status;
 	always @(posedge clk)
@@ -68,7 +68,7 @@ module acia(
 			end
 		end
 	end
-	
+
 	// tx empty is cleared when tx_start starts, cleared when tx_busy deasserts
 	reg txe;
 	wire tx_busy;
@@ -83,14 +83,14 @@ module acia(
 		else
 		begin
 			prev_tx_busy <= tx_busy;
-			
+
 			if(tx_start)
 				txe <= 1'b0;
 			else if(prev_tx_busy & ~tx_busy)
 				txe <= 1'b1;
 		end
 	end
-	
+
 	// rx full is set when rx_stb pulses, cleared when data reg read
 	wire rx_stb;
 	reg rxf;
@@ -106,10 +106,10 @@ module acia(
 				rxf <= 1'b0;
 		end
 	end
-	
+
 	// assemble status byte
 	wire rx_err;
-	assign status = 
+	assign status =
 	{
 		irq,				// bit 7 = irq - forced inactive
 		1'b0,				// bit 6 = parity error - unused
@@ -120,7 +120,7 @@ module acia(
 		txe,				// bit 1 = tx_start empty
 		rxf					// bit 0 = receive full
 	};
-	
+
 	// Async Receiver
 	acia_rx #(
 		.SCW(SCW),				// rate counter width
@@ -134,7 +134,7 @@ module acia(
 		.rx_stb(rx_stb),        // received data available
 		.rx_err(rx_err)         // received data error
 	);
-	
+
 	// Transmitter
 	acia_tx #(
 		.SCW(SCW),              // rate counter width

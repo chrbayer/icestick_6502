@@ -12,7 +12,7 @@ module acia_rx(
 	// sym rate counter for 115200bps @ 16MHz clk
     parameter SCW = 8;
 	parameter sym_cnt = 139;
-	
+
 	// input sync & deglitch
 	reg [7:0] in_pipe;
 	reg in_state;
@@ -29,7 +29,7 @@ module acia_rx(
 		begin
 			// shift in a bit
 			in_pipe <= {in_pipe[6:0],rx_serial};
-	
+
 			// update state
 			if(in_state && all_zero)
 				in_state <= 1'b0;
@@ -57,10 +57,10 @@ module acia_rx(
 				begin
 					// found start bit - wait 1/2 bit to sample
 					rx_bcnt <= 4'h9;
-					rx_rcnt <= sym_cnt/2;
+					rx_rcnt <= sym_cnt[SCW:1];
 					rx_busy <= 1'b1;
 				end
-				
+
 				// clear the strobe
 				rx_stb <= 1'b0;
 			end
@@ -70,9 +70,9 @@ module acia_rx(
 				begin
 					// sample data and restart for next bit
 					rx_sr <= {in_state,rx_sr[8:1]};
-					rx_rcnt <= sym_cnt;
+					rx_rcnt <= sym_cnt[SCW-1:0];
 					rx_bcnt <= rx_bcnt - 1;
-					
+
 					if(~|rx_bcnt)
 					begin
 						// final bit - check for err and finish

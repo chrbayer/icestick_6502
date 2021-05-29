@@ -22,7 +22,7 @@ DEVICE = hx8k
 
 YOSYS = yosys
 NEXTPNR = nextpnr-ice40
-NEXTPNR_ARGS = --pre-pack $(SDC)
+NEXTPNR_ARGS = --pre-pack $(SDC) --randomize-seed --placer sa
 ICEPACK = icepack
 ICETIME = icetime
 ICEPROG = iceprogduino
@@ -64,10 +64,10 @@ recode:
 	$(MAKE) prog
 
 lint: $(SRC)
-	$(VERILATOR) --lint-only -Wall --top-module $(PROJ) $(TECH_LIB) $(SRC)
+	$(VERILATOR) --lint-only -Wall --top-module $(PROJ) $(SRC)
 
 clean:
-	rm -f *.json *.asc *.rpt *.bin *.hex
+	rm -f $(PROJ).json $(PROJ).asc temp.asc $(PROJ).rpt $(PROJ).bin $(PROJ).hex code.hex rom.hex
 	$(MAKE) clean -C ../cc65/
 
 .SECONDARY:
