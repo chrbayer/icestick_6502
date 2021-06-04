@@ -273,19 +273,18 @@ parameter
     WRITE  = 6'd39, // Write memory for read/modify/write
     BP0    = 6'd40, // Z-page  - fetch BP address
     BPX0   = 6'd41, // BP, X   - fetch BP, and send to ALU (+X)
-    BPX1   = 6'd42, // BP, X   - load from memory
-    JMPIX0 = 6'd43, // JMP (,X)- fetch LSB and send to ALU (+X)
-    JMPIX1 = 6'd44, // JMP (,X)- fetch MSB and send to ALU (+Carry)
-    SPIND0 = 6'd45, // Fetch offset, add offset to SPL
-    SPIND1 = 6'd46, // Fetch SP + offset as LSB
-    SPIND2 = 6'd47, // Fetch SP + offset + 1 as MSB, Y to LSB
-    PUSHW0 = 6'd48, // Setup address for push on stack
-    PUSHW1 = 6'd49, // Get MSB, Push MSB for imm16 push, decrement SP
-    PUSHW2 = 6'd50, // Push LSB for imm16 push, decrement SP
-    PHWRD0 = 6'd51, // Push MSB for 16 bit PHW a16
-    READW0 = 6'd52, // Setup read MSB for read/modify/write 16 bit
-    READW1 = 6'd53, // Read MSB for read/modify/write 16 bit
-    WRITEW = 6'd54; // Write MSB for read/modify/write 16 bit
+    JMPIX0 = 6'd42, // JMP (,X)- fetch LSB and send to ALU (+X)
+    JMPIX1 = 6'd43, // JMP (,X)- fetch MSB and send to ALU (+Carry)
+    SPIND0 = 6'd44, // Fetch offset, add offset to SPL
+    SPIND1 = 6'd45, // Fetch SP + offset as LSB
+    SPIND2 = 6'd46, // Fetch SP + offset + 1 as MSB, Y to LSB
+    PUSHW0 = 6'd47, // Setup address for push on stack
+    PUSHW1 = 6'd48, // Get MSB, Push MSB for imm16 push, decrement SP
+    PUSHW2 = 6'd49, // Push LSB for imm16 push, decrement SP
+    PHWRD0 = 6'd50, // Push MSB for 16 bit PHW a16
+    READW0 = 6'd51, // Setup read MSB for read/modify/write 16 bit
+    READW1 = 6'd52, // Read MSB for read/modify/write 16 bit
+    WRITEW = 6'd53; // Write MSB for read/modify/write 16 bit
 
 `ifdef SIM
 /*
@@ -299,7 +298,6 @@ always @*
             REG:    statename = "REG";
             BP0:    statename = "BP0";
             BPX0:   statename = "BPX0";
-            BPX1:   statename = "BPX1";
             ABS0:   statename = "ABS0";
             ABS1:   statename = "ABS1";
             ABSX0:  statename = "ABSX0";
@@ -530,11 +528,12 @@ always @*
 
         INDY1,
         INDX1,
-        BPX1,
         INDX2:          AB = { AXYZB[SEL_B], ADD };
 
         BP0,
         INDY0:          AB = { AXYZB[SEL_B], DIMUX };
+
+        BPX0:           AB = { AXYZB[SEL_B], DIMUX + AXYZB[index_sel] };
 
         SPIND1:         AB = { SPH + { 7'd0, (E ? 1'b0 : CO) }, ADD };
 
@@ -622,7 +621,7 @@ always @*
         INDY2,
         ABSX1,
         ABS1,
-        BPX1,
+        BPX0,
         BP0:     WE = store;
 
         default: WE = 0;
@@ -721,7 +720,6 @@ always @*
         SPIND2,
         INDY1,
         INDX0,
-        BPX0,
         JMPIX0,
         ABSX0  : regsel = index_sel;
 
@@ -796,7 +794,6 @@ always @*
     casez( state )
         REG:    AI = neg ? 8'h00 : regfile;
 
-        BPX0,
         INDX0,
         JMPIX0,
         ABSX0,
@@ -1114,8 +1111,7 @@ always @(posedge clk or posedge reset)
 
         BP0     : state <= bbx_ins ? RDONLY : write_back ? READ : FETCH;
 
-        BPX0    : state <= BPX1;
-        BPX1    : state <= write_back ? READ : FETCH;
+        BPX0    : state <= write_back ? READ : FETCH;
 
         ABS0    : state <= ABS1;
         ABS1    : state <= phw ? PHWRD0 : write_back ? READ : FETCH;
