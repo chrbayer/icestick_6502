@@ -43,5 +43,11 @@ int main(int argc, char**argv) {
           }
     }
 
+    if (ret == 0) {
+        printf("\nSucceeded after %d ticks\n", tickcount);
+    }
+
+    printf("\n");
+
     return ret;
 }

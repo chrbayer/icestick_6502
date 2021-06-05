@@ -1,1 +1,1 @@
-ctx.addClock("CLK1", 40)
+ctx.addClock("CLK1", 12)
