@@ -29,6 +29,13 @@
  */
 
 /*
+ * pre sync logic: Allow execution of reg instructions in one instead of two
+ * clock cycles. This reduces the maximum frequency of the design.
+ */
+
+`define PRESYNC
+
+/*
  * Two things were needed to correctly implement 65C02 BCD arithmentic
  * 1. The Z flag needs calculating over the BCD adjusted ALU output
  * 2. The N flag needs calculating over the BCD adjusted ALU output
@@ -149,14 +156,11 @@ reg SP_dec;             // Decrement stack pointer
 reg SPH_inc;            // Increment stack pointer high byte
 
 reg [2:0] src_reg;      // source register index
-reg [2:0] pre_src_reg;      // source register index
 reg [2:0] dst_reg;      // destination register index
 reg [2:0] index_sel;    // index register X, Y or Z
 
-reg presync;
 reg load_reg;           // loading a register (A, X, Y, S) in this instruction
 reg inc;                // increment
-reg pre_inc;
 reg word;               // word operation (INW/DEW/ASW/ROW)
 reg word_abs;           // word absolute operation (ASW/ROW)
 reg write_back;         // set if memory is read/modified/written
@@ -165,18 +169,14 @@ reg store;              // doing store (STA/STX/STY)
 reg adc_sbc;            // doing ADC/SBC
 reg compare;            // doing CMP/CPY/CPX
 reg shift;              // doing shift/rotate instruction
-reg pre_shift;
 reg rotate;             // doing rotate (no shift)
-reg pre_rotate;
 reg backwards;          // backwards branch
 reg cond_true;          // branch condition is true
 reg [3:0] cond_code;    // condition code bits from instruction
 reg [3:0] bit_code;     // bit position and polarity for SMB/RMB/BBS/BBR
 reg bit_cond_true;      // branch condition is true in case of BBS/BBR
 reg shift_right;        // Instruction ALU shift/rotate right
-reg pre_shift_right;
 reg arith_shift;        // Instruction ALU shift arithmetic right
-reg pre_arith_shift;
 reg alu_shift_right;    // Current cycle shift right enable
 reg alu_arith_shift;    // Current cycle arithmetic shift right enable
 reg [3:0] op;           // Main ALU operation for instruction
@@ -184,6 +184,16 @@ reg [3:0] pre_op;
 reg [3:0] alu_op;       // Current cycle ALU operation
 reg adc_bcd;            // ALU should do BCD style carry
 reg adj_bcd;            // results should be BCD adjusted
+
+`ifdef PRESYNC
+reg presync;            // Instruction can be handled in DECODE state
+reg [2:0] pre_src_reg;  // source register index in DECODE state
+reg pre_inc;            // increment in DECODE state
+reg pre_shift;          // doing shift/rotate instruction in DECODE state
+reg pre_rotate;         // doing rotate (no shift) in DECODE state
+reg pre_shift_right;    // Instruction ALU shift/rotate right in DECODE state
+reg pre_arith_shift;    // Instruction ALU shift arithmetic right in DECODE state
+`endif
 
 /*
  * some flip flops to remember we're doing special instructions. These
@@ -251,47 +261,52 @@ parameter
     BRK2   = 6'd9,  // BRK/IRQ - push P, decrement SP
     BRK3   = 6'd10, // BRK/IRQ - fetch @ fffe
     DECODE = 6'd11, // IR is valid, decode instruction, and write prev reg
-    FETCH  = 6'd12, // fetch next opcode, and perform prev ALU op
-    INDX0  = 6'd13, // (BP,X)  - fetch BP address, and send to ALU (+X)
-    INDX1  = 6'd14, // (BP,X)  - fetch LSB at BP+X, calculate BP+X+1
-    INDX2  = 6'd15, // (BP,X)  - fetch MSB at BP+X+1
-    INDX3  = 6'd16, // (BP,X)  - fetch data
-    INDY0  = 6'd17, // (BP),Y/Z  - fetch BP address, and send BP to ALU (+1)
-    INDY1  = 6'd18, // (BP),Y/Z  - fetch at BP+1, and send LSB to ALU (+Y/Z)
-    INDY2  = 6'd19, // (BP),Y/Z  - fetch data MSB and adjust to Carry
-    JMP0   = 6'd20, // JMP     - fetch PCL and hold
-    JMP1   = 6'd21, // JMP     - fetch PCH
-    JMPI0  = 6'd22, // JMP IND - fetch LSB and send to ALU for delay (+0)
-    JMPI1  = 6'd23, // JMP IND - fetch MSB, proceed with JMP0 state
-    JSR0   = 6'd24, // JSR     - fetch LSB in ADL
-    JSR1   = 6'd25, // JSR     - fetch MSB, push PCH, decrement SP
-    JSR2   = 6'd26, // JSR     - push PCL, decrement SP, setup PC to new address
-    PULL0  = 6'd27, // PLP/PLA/PLX/PLY/PLZ - setup address for SP+1, increment SP
-    PULL1  = 6'd28, // PLP/PLA/PLX/PLY/PLZ - fetch data
-    PUSH0  = 6'd29, // PHP/PHA/PHX/PHY/PHZ - push data to SP, decrement SP
-    READ   = 6'd30, // Read memory for read/modify/write (INC, DEC, shift)
-    RDONLY = 6'd31, // Read memory for BBS/BBR
-    RTI0   = 6'd32, // RTI     - read P from stack
-    RTI1   = 6'd33, // RTI     - read PCL from stack
-    RTS0   = 6'd34, // RTS/RTN - read PCL from stack, store DIMUX for RTN in ALU
-    RTS1   = 6'd35, // RTS/RTN - write PCL to ADL, read PCH
-    RTS2   = 6'd36, // RTS/RTN - load PC and increment, add value fir RTN to SPL
-    RTS3   = 6'd37, // RTN     - Adjust SPH with Carry
-    WRITE  = 6'd38, // Write memory for read/modify/write
-    BP0    = 6'd39, // Z-page  - fetch BP address
-    BPX0   = 6'd40, // BP, X   - fetch BP, and send to ALU (+X)
-    JMPIX0 = 6'd41, // JMP (,X)- fetch LSB and send to ALU (+X)
-    JMPIX1 = 6'd42, // JMP (,X)- fetch MSB and send to ALU (+Carry)
-    SPIND0 = 6'd43, // Fetch offset, add offset to SPL
-    SPIND1 = 6'd44, // Fetch SP + offset as LSB
-    SPIND2 = 6'd45, // Fetch SP + offset + 1 as MSB, Y to LSB
-    PUSHW0 = 6'd46, // Setup address for push on stack
-    PUSHW1 = 6'd47, // Get MSB, Push MSB for imm16 push, decrement SP
-    PUSHW2 = 6'd48, // Push LSB for imm16 push, decrement SP
-    PHWRD0 = 6'd49, // Push MSB for 16 bit PHW a16
-    READW0 = 6'd50, // Setup read MSB for read/modify/write 16 bit
-    READW1 = 6'd51, // Read MSB for read/modify/write 16 bit
-    WRITEW = 6'd52; // Write MSB for read/modify/write 16 bit
+`ifdef PRESYNC
+    REG    = DECODE,
+`else
+    REG    = 6'd12, // Read register for reg-reg transfers`endif
+`endif
+    FETCH  = 6'd13, // fetch next opcode, and perform prev ALU op
+    INDX0  = 6'd14, // (BP,X)  - fetch BP address, and send to ALU (+X)
+    INDX1  = 6'd15, // (BP,X)  - fetch LSB at BP+X, calculate BP+X+1
+    INDX2  = 6'd16, // (BP,X)  - fetch MSB at BP+X+1
+    INDX3  = 6'd17, // (BP,X)  - fetch data
+    INDY0  = 6'd18, // (BP),Y/Z  - fetch BP address, and send BP to ALU (+1)
+    INDY1  = 6'd19, // (BP),Y/Z  - fetch at BP+1, and send LSB to ALU (+Y/Z)
+    INDY2  = 6'd20, // (BP),Y/Z  - fetch data MSB and adjust to Carry
+    JMP0   = 6'd21, // JMP     - fetch PCL and hold
+    JMP1   = 6'd22, // JMP     - fetch PCH
+    JMPI0  = 6'd23, // JMP IND - fetch LSB and send to ALU for delay (+0)
+    JMPI1  = 6'd24, // JMP IND - fetch MSB, proceed with JMP0 state
+    JSR0   = 6'd25, // JSR     - fetch LSB in ADL
+    JSR1   = 6'd26, // JSR     - fetch MSB, push PCH, decrement SP
+    JSR2   = 6'd27, // JSR     - push PCL, decrement SP, setup PC to new address
+    PULL0  = 6'd28, // PLP/PLA/PLX/PLY/PLZ - setup address for SP+1, increment SP
+    PULL1  = 6'd29, // PLP/PLA/PLX/PLY/PLZ - fetch data
+    PUSH0  = 6'd30, // PHP/PHA/PHX/PHY/PHZ - push data to SP, decrement SP
+    READ   = 6'd31, // Read memory for read/modify/write (INC, DEC, shift)
+    RDONLY = 6'd32, // Read memory for BBS/BBR
+    RTI0   = 6'd33, // RTI     - read P from stack
+    RTI1   = 6'd34, // RTI     - read PCL from stack
+    RTS0   = 6'd35, // RTS/RTN - read PCL from stack, store DIMUX for RTN in ALU
+    RTS1   = 6'd36, // RTS/RTN - write PCL to ADL, read PCH
+    RTS2   = 6'd37, // RTS/RTN - load PC and increment, add value fir RTN to SPL
+    RTS3   = 6'd38, // RTN     - Adjust SPH with Carry
+    WRITE  = 6'd39, // Write memory for read/modify/write
+    BP0    = 6'd40, // Z-page  - fetch BP address
+    BPX0   = 6'd41, // BP, X   - fetch BP, and send to ALU (+X)
+    JMPIX0 = 6'd42, // JMP (,X)- fetch LSB and send to ALU (+X)
+    JMPIX1 = 6'd43, // JMP (,X)- fetch MSB and send to ALU (+Carry)
+    SPIND0 = 6'd44, // Fetch offset, add offset to SPL
+    SPIND1 = 6'd45, // Fetch SP + offset as LSB
+    SPIND2 = 6'd46, // Fetch SP + offset + 1 as MSB, Y to LSB
+    PUSHW0 = 6'd47, // Setup address for push on stack
+    PUSHW1 = 6'd48, // Get MSB, Push MSB for imm16 push, decrement SP
+    PUSHW2 = 6'd49, // Push LSB for imm16 push, decrement SP
+    PHWRD0 = 6'd50, // Push MSB for 16 bit PHW a16
+    READW0 = 6'd51, // Setup read MSB for read/modify/write 16 bit
+    READW1 = 6'd52, // Read MSB for read/modify/write 16 bit
+    WRITEW = 6'd53; // Write MSB for read/modify/write 16 bit
 
 `ifdef SIM
 /*
@@ -302,6 +317,9 @@ reg [8*6-1:0] statename;
 always @*
     casez( state )
             DECODE: statename = "DECODE";
+`ifndef PRESYNC
+            REG:    statename = "REG";
+`endif
             BP0:    statename = "BP0";
             BPX0:   statename = "BPX0";
             ABS0:   statename = "ABS0";
@@ -356,7 +374,6 @@ always @*
             WRITEW: statename = "WRITEW";
     endcase
 `endif
-
 
 
 /*
@@ -546,6 +563,9 @@ always @*
         SPIND2,
         PHWRD0:         AB = { ABH, ABL } + 16'd1;
 
+`ifndef PRESYNC
+        REG,
+`endif
         READ,
         READW1,
         WRITE,
@@ -633,6 +653,11 @@ always @*
     endcase
 
 
+`ifdef PRESYNC
+/*
+ * Detect instructions which can be executed in only one clock cycle
+ */
+
 always @*
     if ( state == DECODE )
         casez ( IR )
@@ -646,6 +671,7 @@ always @*
             default:        presync = 0;
         endcase
     else presync = 0;
+`endif
 
 /*
  * register file, contains A, X, Y and S (stack pointer) registers. At each
@@ -774,12 +800,17 @@ alu_65ce02 ualu( .clk(clk),
  */
 
 always @*
+`ifdef PRESYNC
     if( presync ) alu_op = pre_op;
     else
+`endif
         casez( state )
             READ,
             READW1: alu_op = op;
 
+`ifndef PRESYNC
+            REG,
+`endif
             FETCH : alu_op = op;
 
             DECODE,
@@ -794,12 +825,16 @@ always @*
  */
 
 always @*
+`ifdef PRESYNC
     if( presync )
         { alu_shift_right, alu_arith_shift } = { pre_shift_right, pre_arith_shift };
     else if( state == FETCH || state == READ )
-        { alu_shift_right, alu_arith_shift } = { shift_right, arith_shift };
-    else
-        { alu_shift_right, alu_arith_shift } = 2'b00;
+`else
+         if( state == FETCH || state == READ || state == REG )
+`endif
+            { alu_shift_right, alu_arith_shift } = { shift_right, arith_shift };
+        else
+            { alu_shift_right, alu_arith_shift } = 2'b00;
 
 /*
  * Sign extend branch offset.
@@ -814,9 +849,15 @@ always @(posedge clk)
  */
 
 always @*
+`ifdef PRESYNC
     if( presync ) AI = neg ? 8'h00 : pre_src_reg == dst_reg && write_register ? ADD : pre_src_reg == SEL_SPL ? SPL : pre_src_reg == SEL_SPH ? SPH : AXYZB[pre_src_reg];
     else
+`endif
         casez( state )
+`ifndef PRESYNC
+            REG:    AI = neg ? 8'h00 : regfile;
+`endif
+
             INDX0,
             JMPIX0,
             ABSX0,
@@ -850,13 +891,19 @@ always @*
  */
 
 always @*
+`ifdef PRESYNC
     if( presync ) BI = neg ? pre_src_reg == dst_reg && write_register ? ADD : pre_src_reg == SEL_SPL ? SPL : pre_src_reg == SEL_SPH ? SPH : AXYZB[pre_src_reg] : 8'h00;
     else
+`endif
         casez( state )
             RTS1,
             RTS2,
             INDX1,
             PUSHW1: BI = ADD;
+
+`ifndef PRESYNC
+            REG:    BI = neg ? regfile : 8'h00;
+`endif
 
             READ:   BI = xmb_ins ? (bit_code[3] ? 8'h01 << bit_code[2:0] : ~(8'h01 << bit_code[2:0])) : (txb_ins ? (trb_ins ? ~regfile : regfile) : 8'h00);
 
@@ -873,8 +920,10 @@ always @*
  */
 
 always @*
+`ifdef PRESYNC
     if( presync ) CI = pre_rotate ? (plp ? ADD[0] : C) : pre_shift ? 0 : pre_inc;
     else
+`endif
         casez( state )
             BRA0B,
             INDY2,
@@ -886,6 +935,9 @@ always @*
             DECODE,
             ABS1:   CI = 1'bx;
 
+`ifndef PRESYNC
+            REG,
+`endif
             READ:   CI = rotate ? C :
                         shift ? 0 : inc;
 
@@ -1089,7 +1141,7 @@ always @(posedge clk or posedge reset)
                 8'b0111_1100:   state <= JMPIX0;
                 8'b0?00_1000:   state <= PUSH0;
                 8'b0?10_1000:   state <= PULL0;
-                8'b0??1_1000:   state <= DECODE;   // CLC, SEC, CLI, SEI
+                8'b0??1_1000:   state <= REG;   // CLC, SEC, CLI, SEI
                 8'b1000_0010:   state <= SPIND0;
                 8'b1110_0010:   state <= SPIND0;
                 8'b11?0_00?0:   state <= FETCH; // IMM
@@ -1097,7 +1149,7 @@ always @(posedge clk or posedge reset)
                 8'b1010_0011:   state <= FETCH; // IMM
                 8'b1??0_1100:   state <= ABS0;  // X/Y abs
                 8'b1010_1011:   state <= ABS0;  // Z abs
-                8'b1???_1000:   state <= DECODE;   // DEY, TYA, ...
+                8'b1???_1000:   state <= REG;   // DEY, TYA, ...
                 8'b???0_0001:   state <= INDX0;
                 8'b000?_0100:   state <= BP0;   // TSB/TRB
                 8'b????_?111:   state <= BP0;   // SMB/RMB/BBS/BBR
@@ -1126,10 +1178,10 @@ always @(posedge clk or posedge reset)
                 8'b1101_1011:   state <= PUSH0; // PHZ
                 8'b?111_1010:   state <= PULL0; // PLX/PLY
                 8'b1111_1011:   state <= PULL0; // PLZ
-                8'b?0?1_1010:   state <= DECODE;   // <shift> A, TXA, ...
-                8'b???0_1010:   state <= DECODE;   // <shift> A, TXA, DEX, ...  NOP
-                8'b0???_1011:   state <= DECODE;   // TSY, DEZ, ...
-                8'b0?00_001?:   state <= DECODE;   // NEG, ASR, CLE, SEE
+                8'b?0?1_1010:   state <= REG;   // <shift> A, TXA, ...
+                8'b???0_1010:   state <= REG;   // <shift> A, TXA, DEX, ...  NOP
+                8'b0???_1011:   state <= REG;   // TSY, DEZ, ...
+                8'b0?00_001?:   state <= REG;   // NEG, ASR, CLE, SEE
                 8'b0101_1100:   state <= ABS0;  // AUG
             endcase
             /* verilator lint_on CASEOVERLAP */
@@ -1167,6 +1219,10 @@ always @(posedge clk or posedge reset)
         READW0  : state <= READW1;
         READW1  : state <= WRITEW;
         WRITEW  : state <= FETCH;
+
+`ifndef PRESYNC
+        REG     : state <= DECODE;
+`endif
 
         RDONLY  : state <= bbx_ins ? BRA0 : FETCH;
 
@@ -1209,7 +1265,6 @@ always @(posedge clk or posedge reset)
         BRK3    : state <= JMP0;
 
         default : ;
-
     endcase
 
 
@@ -1338,6 +1393,7 @@ always @(posedge clk)
                     default:        src_reg <= SEL_A;
             endcase
 
+`ifdef PRESYNC
 always @*
     if ( reset ) pre_src_reg = SEL_A;
     else if( presync && state == DECODE && RDY )
@@ -1368,6 +1424,7 @@ always @*
             default:        pre_src_reg = SEL_A;
         endcase
     else pre_src_reg = SEL_A;
+`endif
 
 
 always @(posedge clk)
@@ -1452,6 +1509,7 @@ always @(posedge clk)
                 default:        inc <= 0;
         endcase
 
+`ifdef PRESYNC
 always @*
     if( presync && state == DECODE && RDY )
         casez( IR )
@@ -1463,6 +1521,7 @@ always @*
                 default:        pre_inc = 0;
         endcase
     else pre_inc = 0;
+`endif
 
 
 always @(posedge clk )
@@ -1520,6 +1579,7 @@ always @(posedge clk )
                 default:        shift <= 0;
         endcase
 
+`ifdef PRESYNC
 always @*
     if( state == DECODE && RDY )
         casez( IR )
@@ -1530,6 +1590,7 @@ always @*
                 default:        pre_shift = 0;
         endcase
     else pre_shift = 0;
+`endif
 
 
 always @(posedge clk )
@@ -1558,6 +1619,7 @@ always @(posedge clk )
                 default:        shift_right <= 0;
         endcase
 
+`ifdef PRESYNC
 always @*
     if( state == DECODE && RDY )
         casez( IR )
@@ -1568,6 +1630,7 @@ always @*
                 default:        pre_shift_right = 0;
         endcase
     else pre_shift_right = 0;
+`endif
 
 
 always @(posedge clk )
@@ -1580,6 +1643,7 @@ always @(posedge clk )
                 default:        arith_shift <= 0;
         endcase
 
+`ifdef PRESYNC
 always @*
     if( state == DECODE && RDY )
         casez( IR )
@@ -1589,6 +1653,7 @@ always @*
                 default:        pre_arith_shift = 0;
         endcase
     else pre_arith_shift = 0;
+`endif
 
 
 always @(posedge clk )
@@ -1602,6 +1667,7 @@ always @(posedge clk )
                 default:        rotate <= 0;
         endcase
 
+`ifdef PRESYNC
 always @*
     if( state == DECODE && RDY )
         casez( IR )
@@ -1611,6 +1677,7 @@ always @*
                 default:        pre_rotate = 0;
         endcase
     else pre_rotate = 0;
+`endif
 
 
 always @(posedge clk )
@@ -1659,6 +1726,7 @@ always @(posedge clk )
                 default:        op <= OP_ADD;
         endcase
 
+`ifdef PRESYNC
 always @*
     if( state == DECODE && RDY )
         casez( IR )
@@ -1678,6 +1746,7 @@ always @*
                 default:        pre_op = OP_ADD;
         endcase
     else pre_op = OP_ADD;
+`endif
 
 
 always @(posedge clk )
@@ -1766,6 +1835,9 @@ always @(posedge clk )
         cld <= (IR == 8'hd8);
         sed <= (IR == 8'hf8);
         brk <= (IR == 8'h00);
+`ifndef PRESYNC
+        neg <= (IR == 8'h42);
+`endif
         bsr <= (IR == 8'h63);
         rti <= (IR == 8'h40);
         rtn <= (IR == 8'h62);
@@ -1774,9 +1846,11 @@ always @(posedge clk )
         phw <= (IR == 8'hfc);
      end
 
+`ifdef PRESYNC
 always @*
     if( IR == 8'h42 ) neg = 1;
     else neg = 0;
+`endif
 
 
 always @(posedge clk)
