@@ -1293,81 +1293,51 @@ always @(posedge clk)
             endcase
 
 
-always @(posedge clk)
-    if ( reset ) src_reg <= SEL_A;
-    else
-        if( state == DECODE && RDY )
-            casez( IR )
-                    8'b1011_1010:   // TSX
-                                    src_reg <= SEL_SPL;
-
-                    8'b0000_1011:   // TSY
-                                    src_reg <= SEL_SPH;
-
-                    8'b100?_0110,   // STX
-                    8'b1001_1011,   // STX
-                    8'b1000_1110,   // STX
-                    8'b100?_1010,   // TXA, TXS
-                    8'b1110_??00,   // INX, CPX
-                    8'b110?_1010:   // PHX, DEX
-                                    src_reg <= SEL_X;
-
-                    8'b100?_0100,   // STY
-                    8'b1000_1100,   // STY
-                    8'b1000_1011,   // STY
-                    8'b1001_1000,   // TYA
-                    8'b1100_??00,   // CPY, INY
-                    8'b0101_1010,   // PHY
-                    8'b0010_1011,   // TYS
-                    8'b1000_1000:   // DEY
-                                    src_reg <= SEL_Y;
-
-                    8'b011?_0100,   // STZ
-                    8'b1001_1110,   // STZ
-                    8'b00?1_1011,   // DEZ, INZ
-                    8'b0110_1011,   // TZA
-                    8'b1?01_1100,   // STZ, CPZ
-                    8'b1101_1011,   // PHZ
-                    8'b1100_0010,   // CPZ
-                    8'b1101_0100:   // CPZ
-                                    src_reg <= SEL_Z;
-
-                    8'b0111_1011:   // TBA
-                                    src_reg <= SEL_B;
-
-                    default:        src_reg <= SEL_A;
-            endcase
-
 always @*
-    if ( reset ) pre_src_reg = SEL_A;
-    else if( presync && state == DECODE && RDY )
-        casez( IR )
+    casez( IR )
             8'b1011_1010:   // TSX
                             pre_src_reg = SEL_SPL;
 
             8'b0000_1011:   // TSY
                             pre_src_reg = SEL_SPH;
 
+            8'b100?_0110,   // STX
+            8'b1001_1011,   // STX
+            8'b1000_1110,   // STX
+            8'b100?_1010,   // TXA, TXS
+            8'b1110_??00,   // INX, CPX
+            8'b110?_1010:   // PHX, DEX
+                            pre_src_reg = SEL_X;
+
+            8'b100?_0100,   // STY
+            8'b1000_1100,   // STY
+            8'b1000_1011,   // STY
+            8'b1001_1000,   // TYA
+            8'b1100_??00,   // CPY, INY
+            8'b0101_1010,   // PHY
+            8'b0010_1011,   // TYS
+            8'b1000_1000:   // DEY
+                            pre_src_reg = SEL_Y;
+
+            8'b011?_0100,   // STZ
+            8'b1001_1110,   // STZ
+            8'b00?1_1011,   // DEZ, INZ
+            8'b0110_1011,   // TZA
+            8'b1?01_1100,   // STZ, CPZ
+            8'b1101_1011,   // PHZ
+            8'b1100_0010,   // CPZ
+            8'b1101_0100:   // CPZ
+                            pre_src_reg = SEL_Z;
+
             8'b0111_1011:   // TBA
                             pre_src_reg = SEL_B;
 
-            8'b100?_1010,   // TXA, TXS
-            8'b1100_1010,   // DEX
-            8'b1110_1000:   // INX
-                            pre_src_reg = SEL_X;
-
-            8'b1001_1000,   // TYA
-            8'b0010_1011,   // TYS
-            8'b1?00_1000:   // INY, DEY
-                            pre_src_reg = SEL_Y;
-
-            8'b00?1_1011,   // DEZ, INZ
-            8'b0110_1011:   // TZA
-                            pre_src_reg = SEL_Z;
-
             default:        pre_src_reg = SEL_A;
-        endcase
-    else pre_src_reg = SEL_A;
+    endcase
+
+always @(posedge clk)
+    if ( reset ) src_reg <= SEL_A;
+    else if( state == DECODE && RDY ) src_reg <= pre_src_reg;
 
 
 always @(posedge clk)
@@ -1439,30 +1409,20 @@ always @(posedge clk )
         endcase
 
 
-always @(posedge clk)
-    if( state == DECODE && RDY )
-        casez( IR )
-                8'b0001_101?,   // INCA, INZ
-                8'b111?_?110,   // INC
-                8'b11?0_1000,   // INX, INY
-                8'b1110_0011,   // INW
-                8'b0100_0010:   // NEG
-                                inc <= 1;
-
-                default:        inc <= 0;
-        endcase
-
 always @*
-    if( presync && state == DECODE && RDY )
-        casez( IR )
-                8'b0001_101?,   // INCA, INZ
-                8'b11?0_1000,   // INX, INY
-                8'b0100_0010:   // NEG
-                                pre_inc = 1;
+    casez( IR )
+            8'b0001_101?,   // INCA, INZ
+            8'b111?_?110,   // INC
+            8'b11?0_1000,   // INX, INY
+            8'b1110_0011,   // INW
+            8'b0100_0010:   // NEG
+                            pre_inc = 1;
 
-                default:        pre_inc = 0;
-        endcase
-    else pre_inc = 0;
+            default:        pre_inc = 0;
+    endcase
+
+always @(posedge clk)
+    if( state == DECODE && RDY ) inc <= pre_inc;
 
 
 always @(posedge clk )
@@ -1507,29 +1467,20 @@ always @(posedge clk )
         endcase
 
 
-always @(posedge clk )
-    if( state == DECODE && RDY )
-        casez( IR )
-                8'b0???_?110,   // ASL, ROL, LSR, ROR (abs, absx, zpg, zpgx)
-                8'b0??0_1010,   // ASL, ROL, LSR, ROR (acc)
-                8'b010?_0100,   // ASR
-                8'b0100_0011,   // ASR
-                8'b11?0_1011:   // ASW, ROW
-                                shift <= 1;
-
-                default:        shift <= 0;
-        endcase
-
 always @*
-    if( state == DECODE && RDY )
-        casez( IR )
-                8'b0??0_1010,   // ASL, ROL, LSR, ROR (acc)
-                8'b0100_0011:   // ASR
-                                pre_shift = 1;
+    casez( IR )
+            8'b0???_?110,   // ASL, ROL, LSR, ROR (abs, absx, zpg, zpgx)
+            8'b0??0_1010,   // ASL, ROL, LSR, ROR (acc)
+            8'b010?_0100,   // ASR
+            8'b0100_0011,   // ASR
+            8'b11?0_1011:   // ASW, ROW
+                            pre_shift = 1;
 
-                default:        pre_shift = 0;
-        endcase
-    else pre_shift = 0;
+            default:        pre_shift = 0;
+    endcase
+
+always @(posedge clk)
+    if( state == DECODE && RDY ) shift <= pre_shift;
 
 
 always @(posedge clk )
@@ -1546,138 +1497,95 @@ always @(posedge clk )
         endcase
 
 
-always @(posedge clk )
-    if( state == DECODE && RDY )
-        casez( IR )
-                8'b01??_?110,   // ROR, LSR
-                8'b01?0_1010,   // ROR, LSR
-                8'b010?_0100,   // ASR
-                8'b0100_0011:   // ASR
-                                shift_right <= 1;
+always @*
+    casez( IR )
+            8'b01??_?110,   // ROR, LSR
+            8'b01?0_1010,   // ROR, LSR
+            8'b010?_0100,   // ASR
+            8'b0100_0011:   // ASR
+                            pre_shift_right = 1;
 
-                default:        shift_right <= 0;
-        endcase
+            default:        pre_shift_right = 0;
+    endcase
+
+always @(posedge clk)
+    if( state == DECODE && RDY ) shift_right <= pre_shift_right;
+
 
 always @*
-    if( state == DECODE && RDY )
-        casez( IR )
-                8'b01?0_1010,   // ROR, LSR
-                8'b0100_0011:   // ASR
-                                pre_shift_right = 1;
+    casez( IR )
+            8'b010?_0100,   // ASR
+            8'b0100_0011:   // ASR
+                            pre_arith_shift = 1;
 
-                default:        pre_shift_right = 0;
-        endcase
-    else pre_shift_right = 0;
+            default:        pre_arith_shift = 0;
+    endcase
 
+always @(posedge clk)
+    if( state == DECODE && RDY ) arith_shift <= pre_arith_shift;
 
-always @(posedge clk )
-    if( state == DECODE && RDY )
-        casez( IR )
-                8'b010?_0100,   // ASR
-                8'b0100_0011:   // ASR
-                                arith_shift <= 1;
-
-                default:        arith_shift <= 0;
-        endcase
 
 always @*
-    if( state == DECODE && RDY )
-        casez( IR )
-                8'b0100_0011:   // ASR
-                                pre_arith_shift = 1;
+    casez( IR )
+            8'b0?10_1010,   // ROL A, ROR A
+            8'b0?1?_?110,   // ROR, ROL
+            8'b1110_1011:   // ROW
+                            pre_rotate = 1;
 
-                default:        pre_arith_shift = 0;
-        endcase
-    else pre_arith_shift = 0;
+            default:        pre_rotate = 0;
+    endcase
 
+always @(posedge clk)
+    if( state == DECODE && RDY ) rotate <= pre_rotate;
 
-always @(posedge clk )
-    if( state == DECODE && RDY )
-        casez( IR )
-                8'b0?10_1010,   // ROL A, ROR A
-                8'b0?1?_?110,   // ROR, ROL
-                8'b1110_1011:   // ROW
-                                rotate <= 1;
-
-                default:        rotate <= 0;
-        endcase
 
 always @*
-    if( state == DECODE && RDY )
-        casez( IR )
-                8'b0?10_1010:   // ROL A, ROR A
-                                pre_rotate = 1;
+    casez( IR )
+            8'b0000_?100,   // TSB
+            8'b1???_0111:   // SMB
+                            pre_op = OP_OR;
 
-                default:        pre_rotate = 0;
-        endcase
-    else pre_rotate = 0;
+            8'b1000_1001,   // BIT imm
+            8'b001?_?100,   // BIT zp/abs/zpx/absx
+            8'b0001_?100,   // TRB
+            8'b0???_0111:   // RMB
+                            pre_op = OP_AND;
 
+            8'b00??_?110,   // ROL, ASL
+            8'b00?0_1010,   // ROL, ASL
+            8'b11?0_1011:   // ROW, ASW
+                            pre_op = OP_ROL;
 
-always @(posedge clk )
-    if( state == DECODE && RDY )
-        casez( IR )
-                8'b0000_?100,   // TSB
-                8'b1???_0111:   // SMB
-                                op <= OP_OR;
+            8'b01??_?110,   // ROR, LSR
+            8'b01??_1010,   // ROR, LSR
+            8'b010?_0100,   // ASR
+            8'b0100_0011:   // ASR
+                            pre_op = OP_A;
 
-                8'b1000_1001,   // BIT imm
-                8'b001?_?100,   // BIT zp/abs/zpx/absx
-                8'b0001_?100,   // TRB
-                8'b0???_0111:   // RMB
-                                op <= OP_AND;
+            8'b11?1_0010,   // CMP, SBC (zp)
+            8'b0011_101?,   // DEC A, DEZ
+            8'b1000_1000,   // DEY
+            8'b1100_1010,   // DEX
+            8'b110?_?110,   // DEC
+            8'b11??_??01,   // CMP, SBC
+            8'b11?0_0?00,   // CPX, CPY (imm, zpg)
+            8'b11?0_1100,   // CPY, CPY
+            8'b1101_?100,   // CPZ
+            8'b1100_001?,   // CPZ, DEW
+            8'b0100_0010:   // NEG
+                            pre_op = OP_SUB;
 
-                8'b00??_?110,   // ROL, ASL
-                8'b00?0_1010,   // ROL, ASL
-                8'b11?0_1011:   // ROW, ASW
-                                op <= OP_ROL;
+            8'b00?1_0010,   // ORA, AND (zp)
+            8'b0101_0010,   // ORA, EOR (zp)
+            8'b010?_??01,   // EOR
+            8'b00??_??01:   // ORA, AND
+                            pre_op = { 2'b11, IR[6:5] };
 
-                8'b01??_?110,   // ROR, LSR
-                8'b01??_1010,   // ROR, LSR
-                8'b010?_0100,   // ASR
-                8'b0100_0011:   // ASR
-                                op <= OP_A;
+            default:        pre_op = OP_ADD;
+    endcase
 
-                8'b11?1_0010,   // CMP, SBC (zp)
-                8'b0011_101?,   // DEC A, DEZ
-                8'b1000_1000,   // DEY
-                8'b1100_1010,   // DEX
-                8'b110?_?110,   // DEC
-                8'b11??_??01,   // CMP, SBC
-                8'b11?0_0?00,   // CPX, CPY (imm, zpg)
-                8'b11?0_1100,   // CPY, CPY
-                8'b1101_?100,   // CPZ
-                8'b1100_001?,   // CPZ, DEW
-                8'b0100_0010:   // NEG
-                                op <= OP_SUB;
-
-                8'b00?1_0010,   // ORA, AND (zp)
-                8'b0101_0010,   // ORA, EOR (zp)
-                8'b010?_??01,   // EOR
-                8'b00??_??01:   // ORA, AND
-                                op <= { 2'b11, IR[6:5] };
-
-                default:        op <= OP_ADD;
-        endcase
-
-always @*
-    if( state == DECODE && RDY )
-        casez( IR )
-                8'b00?0_1010:   // ROL, ASL
-                                pre_op = OP_ROL;
-
-                8'b01?0_1010,   // ROR, LSR
-                8'b0100_0011:   // ASR
-                                pre_op = OP_A;
-
-                8'b0011_101?,   // DEC A, DEZ
-                8'b1000_1000,   // DEY
-                8'b1100_1010,   // DEX
-                8'b0100_0010:   // NEG
-                                pre_op = OP_SUB;
-
-                default:        pre_op = OP_ADD;
-        endcase
-    else pre_op = OP_ADD;
+always @(posedge clk)
+    if( state == DECODE && RDY ) op <= pre_op;
 
 
 always @(posedge clk )
@@ -1798,25 +1706,25 @@ always @*
 
 
 always @(posedge clk)
-        if ( state == RDONLY & RDY )
-            casez( bit_code[3:0] )
-                    4'b0000: bit_cond_true <= ~DIMUX[0];
-                    4'b0001: bit_cond_true <= ~DIMUX[1];
-                    4'b0010: bit_cond_true <= ~DIMUX[2];
-                    4'b0011: bit_cond_true <= ~DIMUX[3];
-                    4'b0100: bit_cond_true <= ~DIMUX[4];
-                    4'b0101: bit_cond_true <= ~DIMUX[5];
-                    4'b0110: bit_cond_true <= ~DIMUX[6];
-                    4'b0111: bit_cond_true <= ~DIMUX[7];
-                    4'b1000: bit_cond_true <= DIMUX[0];
-                    4'b1001: bit_cond_true <= DIMUX[1];
-                    4'b1010: bit_cond_true <= DIMUX[2];
-                    4'b1011: bit_cond_true <= DIMUX[3];
-                    4'b1100: bit_cond_true <= DIMUX[4];
-                    4'b1101: bit_cond_true <= DIMUX[5];
-                    4'b1110: bit_cond_true <= DIMUX[6];
-                    4'b1111: bit_cond_true <= DIMUX[7];
-            endcase
+    if ( state == RDONLY & RDY )
+        casez( bit_code[3:0] )
+                4'b0000: bit_cond_true <= ~DIMUX[0];
+                4'b0001: bit_cond_true <= ~DIMUX[1];
+                4'b0010: bit_cond_true <= ~DIMUX[2];
+                4'b0011: bit_cond_true <= ~DIMUX[3];
+                4'b0100: bit_cond_true <= ~DIMUX[4];
+                4'b0101: bit_cond_true <= ~DIMUX[5];
+                4'b0110: bit_cond_true <= ~DIMUX[6];
+                4'b0111: bit_cond_true <= ~DIMUX[7];
+                4'b1000: bit_cond_true <= DIMUX[0];
+                4'b1001: bit_cond_true <= DIMUX[1];
+                4'b1010: bit_cond_true <= DIMUX[2];
+                4'b1011: bit_cond_true <= DIMUX[3];
+                4'b1100: bit_cond_true <= DIMUX[4];
+                4'b1101: bit_cond_true <= DIMUX[5];
+                4'b1110: bit_cond_true <= DIMUX[6];
+                4'b1111: bit_cond_true <= DIMUX[7];
+        endcase
 
 
 reg NMI_1 = 0;          // delayed NMI signal
