@@ -17,7 +17,7 @@
  *
  */
 
-module alu_65ce02( clk, op, right, arith, AI, BI, CI, CO, BCD, OUT, V, Z, N, HC, RDY );
+module alu_65ce02( clk, op, right, arith, AI, BI, CI, CO, BCD, OUT, V, HC, RDY );
 	input clk;
 	input right;
 	input arith;
@@ -29,15 +29,12 @@ module alu_65ce02( clk, op, right, arith, AI, BI, CI, CO, BCD, OUT, V, Z, N, HC,
 	output [7:0] OUT;
 	output CO;
 	output V;
-	output Z;
-	output N;
 	output HC;
 	input RDY;
 
 reg [7:0] OUT;
 reg CO;
 wire V;
-wire Z;
 reg N;
 reg HC;
 
@@ -104,6 +101,5 @@ always @(posedge clk)
     end
 
 assign V = AI7 ^ BI7 ^ CO ^ N;
-assign Z = ~|OUT;
 
 endmodule

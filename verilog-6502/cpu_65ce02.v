@@ -33,17 +33,8 @@
  * clock cycles. This reduces the maximum frequency of the design.
  */
 
-`define PRESYNC
+/* `define PRESYNC */
 
-/*
- * Two things were needed to correctly implement 65C02 BCD arithmentic
- * 1. The Z flag needs calculating over the BCD adjusted ALU output
- * 2. The N flag needs calculating over the BCD adjusted ALU output
- *
- * If IMPLEMENT_CORRECT_BCD_FLAGS is defined, this additional logic is added
- */
-
-`define IMPLEMENT_CORRECT_BCD_FLAGS
 
 module cpu_65ce02( clk, reset, AB, DI, DO, WE, IRQ, NMI, RDY );
 
@@ -86,11 +77,9 @@ reg  D = 0;             // decimal flag
 reg  E = 1;             // extended stack pointer disable flag
 reg  V = 0;             // overflow flag
 reg  N = 0;             // negative flag
-wire AZ;                // ALU Zero flag
 wire AZ1;               // ALU Zero flag (BCD adjusted)
 reg  AZ2;               // ALU Second Zero flag, set using TSB/TRB semantics
 wire AV;                // ALU overflow flag
-wire AN;                // ALU negative flag
 wire AN1;               // ALU negative flag (BCD adjusted)
 wire HC;                // ALU half carry
 reg DLDC;               // Delayed C flag for 16 bit operations
@@ -729,17 +718,9 @@ end
 
 assign AO = { ADD[7:4] + ADJH, ADD[3:0] + ADJL };
 
-`ifdef IMPLEMENT_CORRECT_BCD_FLAGS
-
 assign AN1 = AO[7];
 assign AZ1 = ~|AO;
 
-`else
-
-assign AN1 = AN;
-assign AZ1 = AZ;
-
-`endif
 
 /*
  * write to a register. Usually this is the (BCD corrected) output of the
@@ -790,8 +771,6 @@ alu_65ce02 ualu( .clk(clk),
          .CO(CO),
          .OUT(ADD),
          .V(AV),
-         .Z(AZ),
-         .N(AN),
          .HC(HC),
          .RDY(RDY) );
 
