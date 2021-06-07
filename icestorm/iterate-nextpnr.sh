@@ -18,5 +18,5 @@ number=1 maxfreq=0 ; while test $number -le 100 ; do
 done
 
 echo "Found max frequency $maxfreq in run $maxnum"
-mv runs/asc$maxnum hx8k_6502_top.asc
-mv runs/rpt$maxnum hx8k_6502_top.rpt
+cp runs/asc$maxnum hx8k_6502_top.asc
+cp runs/rpt$maxnum hx8k_6502_top.rpt
