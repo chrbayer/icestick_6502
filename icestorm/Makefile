@@ -8,7 +8,7 @@
 
 SRC =	hx8k_6502_top.v pll.v ../src/soc_6502.v ../src/acia.v \
 		../verilog-6502/cpu_65ce02.v ../verilog-6502/alu_65ce02.v \
-		../src/acia_rx.v ../src/acia_tx.v
+		../src/acia_rx.v ../src/acia_tx.v ../src/mos6526.v
 
 # preparing the machine code
 FAKE_HEX = rom.hex

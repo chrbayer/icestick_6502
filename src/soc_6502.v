@@ -45,13 +45,40 @@ module soc_6502(
 	always @(posedge clk)
 		ram_do <= ram_mem[CPU_AB[11:0]];
 
-	// GPIO @ page 10-1f
-	reg [7:0] gpio_do;
-	always @(posedge clk)
-		if((CPU_WE == 1'b1) && (p1 == 1'b1))
-			gpio_o <= CPU_DO;
-	always @(posedge clk)
-		gpio_do <= gpio_i;
+	// CIA @ page 10-1f
+	reg [7:0] cia_do;
+	reg irq_n;
+	reg [7:0] pa_out;
+	reg [7:0] pb_in;
+	reg pc_n;
+	reg tod;
+	reg sp_in;
+	reg sp_out;
+	reg cnt_in;
+	reg cnt_out;
+	mos6526 umos6526(
+		.clk(clk),
+		.phi2_p, // Phi 2 positive edge
+		.phi2_n, // Phi 2 negative edge
+		.res_n(~reset),
+		.cs_n(~p1),
+		.rw(CPU_WE),
+		.rs(CPU_AB[3:0]),
+		.db_in(CPU_DO),
+		.db_out(cia_do),
+		.pa_in(gpio_i),
+		.pa_out(pa_out),
+		.pb_in(pb_in),
+		.pb_out(gpio_o),
+		.flag_n(1),
+		.pc_n(pc_n),
+		.tod(tod),
+		.sp_in(sp_in),
+		.sp_out(sp_out),
+		.cnt_in(cnt_in),
+		.cnt_out(cnt_out),
+		.irq_n(irq_n)
+	);
 
 	// ACIA at page 20-2f
 	wire [7:0] acia_do;
@@ -118,7 +145,7 @@ module soc_6502(
 	always @(*)
 		casez(mux_sel)
 			4'h0: CPU_DI = ram_do;
-			4'h1: CPU_DI = gpio_do;
+			4'h1: CPU_DI = cio_do;
 			4'h2: CPU_DI = acia_do;
 			4'hf: CPU_DI = rom_do;
 			default: CPU_DI = rom_do;

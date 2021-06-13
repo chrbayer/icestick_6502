@@ -2,7 +2,7 @@
 # 02-11-2019 E. Brombaugh
 
 # sources
-SOURCES = 	../src/soc_6502.v ../src/acia.v ../src/acia_rx.v ../src/acia_tx.v \
+SOURCES = 	../src/soc_6502.v ../src/acia.v ../src/acia_rx.v ../src/acia_tx.v ../src/mos6526.v \
 			../verilog-6502/alu_65ce02.v ../verilog-6502/cpu_65ce02.v
 
 # top level
