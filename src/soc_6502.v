@@ -46,10 +46,12 @@ module soc_6502(
 		ram_do <= ram_mem[CPU_AB[11:0]];
 
 	// CIA @ page 10-1f
+	reg phi2;
 	reg [7:0] cia_do;
 	reg irq_n;
 	reg [7:0] pa_out;
 	reg [7:0] pb_in;
+	reg flag_n;
 	reg pc_n;
 	reg tod;
 	reg sp_in;
@@ -58,8 +60,7 @@ module soc_6502(
 	reg cnt_out;
 	mos6526 umos6526(
 		.clk(clk),
-		.phi2_p, // Phi 2 positive edge
-		.phi2_n, // Phi 2 negative edge
+		.phi2(phi2), // Phi 2 positive edge
 		.res_n(~reset),
 		.cs_n(~p1),
 		.rw(CPU_WE),
@@ -70,7 +71,7 @@ module soc_6502(
 		.pa_out(pa_out),
 		.pb_in(pb_in),
 		.pb_out(gpio_o),
-		.flag_n(1),
+		.flag_n(flag_n),
 		.pc_n(pc_n),
 		.tod(tod),
 		.sp_in(sp_in),
@@ -145,7 +146,7 @@ module soc_6502(
 	always @(*)
 		casez(mux_sel)
 			4'h0: CPU_DI = ram_do;
-			4'h1: CPU_DI = cio_do;
+			4'h1: CPU_DI = cia_do;
 			4'h2: CPU_DI = acia_do;
 			4'hf: CPU_DI = rom_do;
 			default: CPU_DI = rom_do;

@@ -6,8 +6,7 @@
 
 module mos6526 (
   input  wire       clk,
-  input  wire       phi2_p, // Phi 2 positive edge
-  input  wire       phi2_n, // Phi 2 negative edge
+  input  wire       phi2, // Phi 2 positive edge
   input  wire       res_n,
   input  wire       cs_n,
   input  wire       rw,
@@ -83,8 +82,8 @@ reg [ 2:0] cnt_pulsecnt;
 
 reg        int_reset;
 
-wire       rd = phi2_n & !cs_n & rw;
-wire       wr = phi2_n & !cs_n & !rw;
+wire       rd = !cs_n & rw;
+wire       wr = !cs_n & !rw;
 
 // Register Decoding
 always @(posedge clk) begin
@@ -122,7 +121,7 @@ always @(posedge clk) begin
       4'h2: ddra <= db_in;
       default: ;
     endcase
-  if (phi2_p) pa_out <= pra | ~ddra;
+  if (phi2) pa_out <= pra | ~ddra;
 end
 
 // Port B Output
@@ -137,7 +136,7 @@ always @(posedge clk) begin
       4'h3: ddrb <= db_in;
       default: ;
     endcase
-  if (phi2_p) begin
+  if (phi2) begin
     pb_out[7]   <= crb[1] ? (crb[2] ? timerBff ^ timerBoverflow : timerBoverflow) : prb[7] | ~ddrb[7];
     pb_out[6]   <= cra[1] ? (cra[2] ? timerAff ^ timerAoverflow : timerAoverflow) : prb[6] | ~ddrb[6];
     pb_out[5:0] <= prb[5:0] | ~ddrb[5:0];
@@ -148,7 +147,7 @@ end
 always @(posedge clk) begin
   if (!res_n) icr[4] <= 1'b0;
   else begin
-    if (phi2_p) begin
+    if (phi2) begin
       if (int_reset) icr[4] <= 1'b0;
       flag_n_prev <= flag_n;
       if (!flag_n && flag_n_prev) icr[4] <= 1'b1;
@@ -159,7 +158,7 @@ end
 // Port Control Output
 always @(posedge clk) begin
   if (!cs_n && rs == 4'h1) pc_n <= 1'b0;
-  else pc_n <= phi2_p ? 1'b1 : pc_n;
+  else pc_n <= phi2 ? 1'b1 : pc_n;
 end
 
 // Timer A
@@ -167,7 +166,7 @@ reg countA0, countA1, countA2, countA3, loadA1, oneShotA0;
 reg timerAff;
 wire timerAin = cra[5] ? countA1 : 1'b1;
 wire [15:0] newTimerAVal = countA3 ? (timer_a - 1'b1) : timer_a;
-wire timerAoverflow = !newTimerAVal & countA2;
+wire timerAoverflow = !&newTimerAVal & countA2;
 
 always @(posedge clk) begin
 
@@ -180,7 +179,7 @@ always @(posedge clk) begin
     icr[0]         <= 1'b0;
   end
   else begin
-    if (phi2_p) begin
+    if (phi2) begin
       if (int_reset) icr[0] <= 0;
       countA0 <= cnt_in && ~cnt_in_prev;
       countA1 <= countA0;
@@ -237,7 +236,7 @@ reg countB0, countB1, countB2, countB3, loadB1, oneShotB0;
 reg timerBff;
 wire timerBin = crb[6] ? timerAoverflow & (~crb[5] | cnt_in) : (~crb[5] | countB1);
 wire [15:0] newTimerBVal = countB3 ? (timer_b - 1'b1) : timer_b;
-wire timerBoverflow = !newTimerBVal & countB2;
+wire timerBoverflow = !&newTimerBVal & countB2;
 
 always @(posedge clk) begin
 
@@ -250,7 +249,7 @@ always @(posedge clk) begin
     icr[1]         <= 1'b0;
   end
   else begin
-    if (phi2_p) begin
+    if (phi2) begin
       if (int_reset) begin
         icr[1] <= 0;
       end
@@ -351,7 +350,7 @@ always @(posedge clk) begin
       tod_count <= 3'h0;
     end
     if (tod_tick) begin
-      tod_10ths <= (tod_10ths == 4'h9) ? 1'b0 : tod_10ths + 1'b1;
+      tod_10ths <= (tod_10ths == 4'h9) ? 4'h0 : tod_10ths + 4'h1;
       if (tod_10ths == 4'h9) begin
         tod_sec[3:0] <= tod_sec[3:0] + 1'b1;
         if (tod_sec[3:0] == 4'h9) begin
@@ -382,7 +381,7 @@ always @(posedge clk) begin
   end
   else tod_count <= 3'h0;
 
-  if (phi2_p) begin
+  if (phi2) begin
     if (!tod_latched) tod_latch <= {tod_hr, tod_min, tod_sec, tod_10ths};
     if ({tod_hr, tod_min, tod_sec, tod_10ths} == tod_alarm) begin
       tod_alarm_reg <= 1'b1;
@@ -412,9 +411,10 @@ always @(posedge clk) begin
             sdr <= db_in;
             sp_pending <= 1;
           end
+        default : ;
       endcase
 
-    if (phi2_p) begin
+    if (phi2) begin
       if (int_reset) icr[3] <= 1'b0;
 
       if (!cra[6]) begin // input
@@ -455,7 +455,7 @@ always @(posedge clk) begin
     cnt_out_prev <= 1'b1;
     cnt_pulsecnt <= 3'h0;
   end
-  else if (phi2_p) begin
+  else if (phi2) begin
     cnt_in_prev  <= cnt_in;
     cnt_out_prev <= cnt_out;
 
@@ -484,7 +484,7 @@ always @(posedge clk) begin
     if (wr && rs == 4'hd) imr_reg <= db_in;
     if (rd && rs == 4'hd) int_reset <= 1;
 
-    if (phi2_p & int_reset) begin
+    if (phi2 & int_reset) begin
       irq_n <= 1;
 
     imr <= imr_reg[7] ? imr | imr_reg[4:0] : imr & ~imr_reg[4:0];
