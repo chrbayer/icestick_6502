@@ -7,9 +7,9 @@ void tick(unsigned int tickcount, Vsoc_6502 *tb) {
     tb->eval();
 
     if (tickcount < 5)
-       tb->reset = 1;
+       tb->reset_n = 0;
     else
-       tb->reset = 0;
+       tb->reset_n = 1;
 
     tb->clk = 1;
 

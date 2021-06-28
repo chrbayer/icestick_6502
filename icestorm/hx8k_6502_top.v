@@ -15,7 +15,7 @@ module hx8k_6502_top(
 
         // reset generator waits > 10us
 	reg [7:0] reset_cnt;
-	reg reset;
+	reg reset_n;
 	initial
         reset_cnt <= 8'h00;
 
@@ -24,10 +24,10 @@ module hx8k_6502_top(
 		if(reset_cnt != 8'hff)
         begin
             reset_cnt <= reset_cnt + 8'h01;
-            reset <= 1'b1;
+            reset_n <= 1'b0;
         end
         else
-            reset <= 1'b0;
+            reset_n <= 1'b1;
 	end
 
 	// test unit
@@ -35,7 +35,7 @@ module hx8k_6502_top(
 	assign gpio_i[7:2] = 6'h00;
 	soc_6502 u6502(
 		.clk(CLK1),
-		.reset(reset),
+		.reset_n(reset_n),
 
 		.gpio_o(gpio_o),
 		.gpio_i(gpio_i),

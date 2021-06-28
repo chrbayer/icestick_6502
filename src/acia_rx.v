@@ -3,7 +3,7 @@
 
 module acia_rx(
 	input clk,				  // system clock
-	input rst,				  // system reset
+	input reset_n,			  // system reset
 	input rx_serial,		  // raw serial input
 	output reg [7:0] rx_dat,  // received byte
 	output reg rx_stb,        // received data available
@@ -19,7 +19,7 @@ module acia_rx(
 	wire all_zero = ~|in_pipe;
 	wire all_one = &in_pipe;
 	always @(posedge clk)
-		if(rst)
+		if(~reset_n)
 		begin
 			// assume RX input idle at start
 			in_pipe <= 8'hff;
@@ -43,7 +43,7 @@ module acia_rx(
 	reg [SCW-1:0] rx_rcnt;
 	reg rx_busy;
 	always @(posedge clk)
-		if(rst)
+		if(!reset_n)
 		begin
 			rx_busy <= 1'b0;
 			rx_stb <= 1'b0;

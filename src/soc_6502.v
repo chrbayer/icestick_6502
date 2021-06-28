@@ -2,8 +2,8 @@
 // 02-11-19 E. Brombaugh
 
 module soc_6502(
-    input clk,              // 4..0MHz CPU clock
-    input reset,            // Low-true reset
+    input clk,              // SOC clock
+    input reset_n,          // Low-true reset
 
 	output reg [7:0] gpio_o,
 	input [7:0] gpio_i,
@@ -15,24 +15,24 @@ module soc_6502(
     wire [15:0] CPU_AB;
     reg [7:0] CPU_DI;
     wire [7:0] CPU_DO;
-    wire CPU_WE, CPU_IRQ;
+    wire CPU_WE_n, CPU_IRQ_n;
     cpu_65ce02 ucpu(
         .clk(clk),
-        .reset(reset),
+        .reset_n(reset_n),
         .AB(CPU_AB),
         .DI(CPU_DI),
         .DO(CPU_DO),
-        .WE(CPU_WE),
-        .IRQ(CPU_IRQ),
-        .NMI(1'b0),
+        .WE_n(CPU_WE_n),
+        .IRQ_n(CPU_IRQ_n),
+        .NMI_n(1'b1),
         .RDY(1'b1)
     );
 
 	// address decode - not fully decoded for 512-byte memories
-	wire p0 = (CPU_AB[15:12] == 4'h0) ? 1 : 0;
-	wire p1 = (CPU_AB[15:12] == 4'h1) ? 1 : 0;
-	wire p2 = (CPU_AB[15:12] == 4'h2) ? 1 : 0;
-	wire pf = (CPU_AB[15:12] == 4'hf) ? 1 : 0;
+	wire p0 = (CPU_AB[15:12] == 4'h0) ? 0 : 1;
+	wire p1 = (CPU_AB[15:12] == 4'h1) ? 0 : 1;
+	wire p2 = (CPU_AB[15:12] == 4'h2) ? 0 : 1;
+	wire pf = (CPU_AB[15:12] == 4'hf) ? 0 : 1;
 
 	// RAM @ pages 00-0f
 	reg [7:0] ram_mem [0:4095];
@@ -40,18 +40,17 @@ module soc_6502(
         $readmemh("null.hex", ram_mem);
 	reg [7:0] ram_do;
 	always @(posedge clk)
-		if((CPU_WE == 1'b1) && (p0 == 1'b1))
+		if((CPU_WE_n == 1'b0) && (p0 == 1'b0))
 			ram_mem[CPU_AB[11:0]] <= CPU_DO;
 	always @(posedge clk)
 		ram_do <= ram_mem[CPU_AB[11:0]];
 
 	// CIA @ page 10-1f
 	reg phi2;
-	reg [7:0] cia_do;
-	reg irq_n;
+	wire [7:0] cia_do;
+	wire cia_irq_n;
 	reg [7:0] pa_out;
 	reg [7:0] pb_in;
-	reg flag_n;
 	reg pc_n;
 	reg tod;
 	reg sp_in;
@@ -60,10 +59,10 @@ module soc_6502(
 	reg cnt_out;
 	mos6526 umos6526(
 		.clk(clk),
-		.phi2(phi2), // Phi 2 positive edge
-		.res_n(~reset),
-		.cs_n(~p1),
-		.rw(CPU_WE),
+		.phi2(phi2), // Peripheral clock
+		.reset_n(reset_n),
+		.cs_n(p1),
+		.rw(CPU_WE_n),
 		.rs(CPU_AB[3:0]),
 		.db_in(CPU_DO),
 		.db_out(cia_do),
@@ -71,30 +70,33 @@ module soc_6502(
 		.pa_out(pa_out),
 		.pb_in(pb_in),
 		.pb_out(gpio_o),
-		.flag_n(flag_n),
+		.flag_n(1'b1),
 		.pc_n(pc_n),
 		.tod(tod),
 		.sp_in(sp_in),
 		.sp_out(sp_out),
 		.cnt_in(cnt_in),
 		.cnt_out(cnt_out),
-		.irq_n(irq_n)
+		.irq_n(cia_irq_n)
 	);
 
 	// ACIA at page 20-2f
 	wire [7:0] acia_do;
+	wire acia_irq_n;
 	acia uacia(
 		.clk(clk),				// system clock
-		.rst(reset),			// system reset
-		.cs(p2),				// chip select
-		.we(CPU_WE),			// write enable
+		.reset_n(reset_n),		// system reset
+		.cs_n(p2),				// chip select
+		.we_n(CPU_WE_n),		// write enable
 		.rs(CPU_AB[0]),			// register select
 		.rx(RX),				// serial receive
 		.din(CPU_DO),			// data bus input
 		.dout(acia_do),			// data bus output
 		.tx(TX),				// serial transmit
-		.irq(CPU_IRQ)			// interrupt request
+		.irq_n(acia_irq_n)		// interrupt request
 	);
+
+	assign CPU_IRQ_n = cia_irq_n | acia_irq_n;
 
 	// ROM @ pages f0,f1...
 	reg [7:0] rom_do;

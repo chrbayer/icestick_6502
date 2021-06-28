@@ -3,15 +3,15 @@
 
 module acia(
 	input clk,				// system clock
-	input rst,				// system reset
-	input cs,				// chip select
-	input we,				// write enable
+	input reset_n,			// system reset
+	input cs_n,				// chip select
+	input we_n,				// write enable
 	input rs,				// register select
 	input rx,				// serial receive
 	input [7:0] din,		// data bus input
 	output reg [7:0] dout,	// data bus output
 	output tx,				// serial tx_start
-	output irq				// high-true interrupt request
+	output irq_n			// low-true interrupt request
 );
 	// hard-coded bit-rate
 	localparam sym_rate = 9600;
@@ -22,7 +22,7 @@ module acia(
 	wire [SCW-1:0] sym_cntr = sym_cnt[SCW-1:0];
 
 	// generate tx_start signal on write to register 1
-	wire tx_start = cs & rs & we;
+	wire tx_start = ~cs_n & rs & ~we_n;
 
 	// load control register
 	reg [1:0] counter_divide_select, tx_start_control;
@@ -30,14 +30,14 @@ module acia(
 	reg receive_interrupt_enable;
 	always @(posedge clk)
 	begin
-		if(rst)
+		if(~reset_n)
 		begin
 			counter_divide_select <= 2'b00;
 			word_select <= 3'b000;
 			tx_start_control <= 2'b00;
 			receive_interrupt_enable <= 1'b0;
 		end
-		else if(cs & ~rs & we)
+		else if(~cs_n & ~rs & ~we_n)
 			{
 				receive_interrupt_enable,
 				tx_start_control,
@@ -47,19 +47,19 @@ module acia(
 	end
 
 	// acia reset generation
-	wire acia_rst = rst | (counter_divide_select == 2'b11);
+	wire acia_rst_n = reset_n & (counter_divide_select != 2'b11);
 
 	// load dout with either status or rx data
 	wire [7:0] rx_dat, status;
 	always @(posedge clk)
 	begin
-		if(rst)
+		if(~reset_n)
 		begin
 			dout <= 8'h00;
 		end
 		else
 		begin
-			if(cs & ~we)
+			if(~cs_n & we_n)
 			begin
 				if(rs)
 					dout <= rx_dat;
@@ -75,7 +75,7 @@ module acia(
 	reg prev_tx_busy;
 	always @(posedge clk)
 	begin
-		if(rst)
+		if(~reset_n)
 		begin
 			txe <= 1'b1;
 			prev_tx_busy <= 1'b0;
@@ -96,13 +96,13 @@ module acia(
 	reg rxf;
 	always @(posedge clk)
 	begin
-		if(rst)
+		if(~reset_n)
 			rxf <= 1'b0;
 		else
 		begin
 			if(rx_stb)
 				rxf <= 1'b1;
-			else if(cs & rs & ~we)
+			else if(~cs_n & rs & we_n)
 				rxf <= 1'b0;
 		end
 	end
@@ -111,7 +111,7 @@ module acia(
 	wire rx_err;
 	assign status =
 	{
-		irq,				// bit 7 = irq - forced inactive
+		~irq_n,				// bit 7 = irq - forced inactive
 		1'b0,				// bit 6 = parity error - unused
 		rx_err,			    // bit 5 = overrun error - same as all errors
 		rx_err,			    // bit 4 = framing error - same as all errors
@@ -128,7 +128,7 @@ module acia(
 	)
 	my_rx(
 		.clk(clk),				// system clock
-		.rst(acia_rst),			// system reset
+		.reset_n(acia_rst_n), 	// system reset
 		.rx_serial(rx),		    // raw serial input
 		.rx_dat(rx_dat),        // received byte
 		.rx_stb(rx_stb),        // received data available
@@ -142,7 +142,7 @@ module acia(
 	)
 	my_tx(
 		.clk(clk),				// system clock
-		.rst(acia_rst),			// system reset
+		.reset_n(acia_rst_n),	// system reset
 		.tx_dat(din),           // transmit data byte
 		.tx_start(tx_start),    // trigger transmission
 		.tx_serial(tx),         // tx serial output
@@ -150,6 +150,6 @@ module acia(
 	);
 
 	// generate IRQ
-	assign irq = (rxf & receive_interrupt_enable) | ((tx_start_control==2'b01) & txe);
+	assign irq_n = ~((rxf & receive_interrupt_enable) | ((tx_start_control==2'b01) & txe));
 
 endmodule

@@ -7,7 +7,7 @@
 module mos6526 (
   input  wire       clk,
   input  wire       phi2, // Phi 2 positive edge
-  input  wire       res_n,
+  input  wire       reset_n,
   input  wire       cs_n,
   input  wire       rw,
 
@@ -87,7 +87,7 @@ wire       wr = !cs_n & !rw;
 
 // Register Decoding
 always @(posedge clk) begin
-  if (!res_n) db_out <= 8'h00;
+  if (!reset_n) db_out <= 8'h00;
   else if (rd)
     case (rs)
       4'h0: db_out <= pa_in;
@@ -111,7 +111,7 @@ end
 
 // Port A Output
 always @(posedge clk) begin
-  if (!res_n) begin
+  if (!reset_n) begin
     pra  <= 8'h00;
     ddra <= 8'h00;
   end
@@ -126,7 +126,7 @@ end
 
 // Port B Output
 always @(posedge clk) begin
-  if (!res_n) begin
+  if (!reset_n) begin
     prb  <= 8'h00;
     ddrb <= 8'h00;
   end
@@ -145,7 +145,7 @@ end
 
 // FLAG Input
 always @(posedge clk) begin
-  if (!res_n) icr[4] <= 1'b0;
+  if (!reset_n) icr[4] <= 1'b0;
   else begin
     if (phi2) begin
       if (int_reset) icr[4] <= 1'b0;
@@ -170,7 +170,7 @@ wire timerAoverflow = !&newTimerAVal & countA2;
 
 always @(posedge clk) begin
 
-  if (!res_n) begin
+  if (!reset_n) begin
     ta_lo          <= 8'hff;
     ta_hi          <= 8'hff;
     cra            <= 8'h00;
@@ -240,7 +240,7 @@ wire timerBoverflow = !&newTimerBVal & countB2;
 
 always @(posedge clk) begin
 
-  if (!res_n) begin
+  if (!reset_n) begin
     tb_lo          <= 8'hff;
     tb_hi          <= 8'hff;
     crb            <= 8'h00;
@@ -305,7 +305,7 @@ end
 
 // Time of Day
 always @(posedge clk) begin
-  if (!res_n) begin
+  if (!reset_n) begin
     tod_10ths   <= 4'h0;
     tod_sec     <= 7'h00;
     tod_min     <= 7'h00;
@@ -394,7 +394,7 @@ end
 
 // Serial Port Input/Output
 always @(posedge clk) begin
-  if (!res_n) begin
+  if (!reset_n) begin
     sdr         <= 8'h00;
     sp_out      <= 1'b0;
     sp_pending  <= 1'b0;
@@ -450,7 +450,7 @@ end
 
 // CNT Input/Output
 always @(posedge clk) begin
-  if (!res_n) begin
+  if (!reset_n) begin
     cnt_out      <= 1'b1;
     cnt_out_prev <= 1'b1;
     cnt_pulsecnt <= 3'h0;
@@ -474,7 +474,7 @@ end
 reg [7:0] imr_reg;
 
 always @(posedge clk) begin
-  if (!res_n) begin
+  if (!reset_n) begin
     imr       <= 5'h00;
     imr_reg   <= 0;
     irq_n     <= 1'b1;

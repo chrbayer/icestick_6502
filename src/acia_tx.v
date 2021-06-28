@@ -3,7 +3,7 @@
 
 module acia_tx(
 	input clk,				// system clock
-	input rst,				// system reset
+	input reset_n,			// system reset
 	input [7:0] tx_dat,		// transmit data byte
 	input tx_start,			// trigger transmission
 	output tx_serial,		// tx serial output
@@ -19,7 +19,7 @@ module acia_tx(
 	reg [SCW-1:0] tx_rcnt;
 	always @(posedge clk)
 	begin
-		if(rst)
+		if(~reset_n)
 		begin
 			tx_sr <= 9'h1ff;
 			tx_bcnt <= 4'h0;

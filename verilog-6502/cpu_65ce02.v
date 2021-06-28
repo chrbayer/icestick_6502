@@ -36,16 +36,16 @@
 /* `define PRESYNC */
 
 
-module cpu_65ce02( clk, reset, AB, DI, DO, WE, IRQ, NMI, RDY );
+module cpu_65ce02( clk, reset_n, AB, DI, DO, WE_n, IRQ_n, NMI_n, RDY );
 
 input clk;              // CPU clock
-input reset;            // reset signal
+input reset_n;          // reset signal
 output reg [15:0] AB;   // address bus
 input [7:0] DI;         // data in, read bus
 output [7:0] DO;        // data out, write bus
-output WE;              // write enable
-input IRQ;              // interrupt request
-input NMI;              // non-maskable interrupt request
+output WE_n;            // write enable
+input IRQ_n;            // interrupt request
+input NMI_n;            // non-maskable interrupt request
 input RDY;              // Ready signal. Pauses CPU when RDY=0
 
 /*
@@ -91,7 +91,7 @@ wire [7:0] DI;          // Data In
 wire [7:0] IR;          // Instruction register
 reg  [7:0] DO;          // Data Out
 wire [7:0] AO;          // ALU output after BCD adjustment
-reg  WE;                // Write Enable
+reg  WE_n;              // Write Enable
 reg  CI;                // Carry In
 wire CO;                // Carry Out
 wire [7:0] PCH = PC[15:8];
@@ -371,7 +371,7 @@ always @*
  */
 always @*
     casez( state )
-        DECODE:         if( (~I & IRQ) | NMI_edge )
+        DECODE:         if( (~I & ~IRQ_n) | NMI_edge )
                             PC_temp = { ABH, ABL };
                         else
                             PC_temp = PC;
@@ -399,7 +399,7 @@ always @*
  */
 always @*
     casez( state )
-        DECODE:         if( (~I & IRQ) | NMI_edge )
+        DECODE:         if( (~I & ~IRQ_n) | NMI_edge )
                             PC_inc = 0;
                         else
                             PC_inc = 1;
@@ -441,7 +441,7 @@ always @*
  * SPH_temp.
  */
 always @*
-    if ( reset ) SPH_temp = 8'h01;
+    if ( ~reset_n ) SPH_temp = 8'h01;
     else
         casez ( state )
             DECODE:         SPH_temp = ( regsel == SEL_SPH && write_register ) ? AO : SPH;
@@ -494,7 +494,7 @@ always @*
  * Set new PC
  */
 always @(posedge clk)
-    if( RDY && ~reset )
+    if( RDY && reset_n )
         PC <= PC_temp + { 15'd0, PC_inc };
 
 /*
@@ -609,7 +609,7 @@ always @*
 
         PUSHW1:  DO = DIMUX;
 
-        BRK2:    DO = (IRQ | NMI_edge) ? (P & 8'b1110_1111) : P;
+        BRK2:    DO = (~IRQ_n | NMI_edge) ? (P & 8'b1110_1111) : P;
 
         default: DO = regfile;
     endcase
@@ -629,16 +629,16 @@ always @*
         PUSHW1,
         PUSHW2,
         WRITE,
-        WRITEW:  WE = 1;
+        WRITEW:  WE_n = 0;
 
         INDX3,  // only if doing a STA, STX or STY
         INDY2,
         ABSX1,
         ABS1,
         BPX0,
-        BP0:     WE = store;
+        BP0:     WE_n = ~store;
 
-        default: WE = 0;
+        default: WE_n = 1;
     endcase
 
 
@@ -727,7 +727,7 @@ assign AZ1 = ~|AO;
  * ALU.
  */
 always @(posedge clk)
-    if ( reset ) begin
+    if ( ~reset_n ) begin
         AXYZB[SEL_Z] <= ZDEFAULT;
         AXYZB[SEL_B] <= ZEROPAGE;
     end
@@ -1039,7 +1039,7 @@ always @(posedge clk )
  * Update E flag
  */
 always @(posedge clk )
-    if( reset )
+    if( ~reset_n )
         E <= 1;
     else if( state == DECODE ) begin
         if( see ) E <= 1;
@@ -1070,7 +1070,7 @@ always @(posedge clk )
  */
 
 always @(posedge clk )
-    if( reset )
+    if( ~reset_n )
         IRHOLD_valid <= 0;
     else if( RDY ) begin
         if( state == PULL0 || state == PUSH0 ) begin
@@ -1080,7 +1080,7 @@ always @(posedge clk )
             IRHOLD_valid <= 0;
     end
 
-assign IR = (IRQ & ~I) | NMI_edge ? 8'h00 :
+assign IR = (~IRQ_n & ~I) | NMI_edge ? 8'h00 :
                      IRHOLD_valid ? IRHOLD : DIMUX;
 
 always @(posedge clk )
@@ -1098,8 +1098,8 @@ parameter
 /*
  * Microcode state machine
  */
-always @(posedge clk or posedge reset)
-    if( reset ) state <= BRK0;
+always @(posedge clk or negedge reset_n)
+    if( ~reset_n ) state <= BRK0;
     else if( RDY ) casez( state )
         DECODE  :
             /* verilator lint_off CASEOVERLAP */
@@ -1252,7 +1252,7 @@ always @(posedge clk or posedge reset)
  */
 
 always @(posedge clk)
-    if( reset )
+    if( ~reset_n )
         res <= 1;
     else if( state == DECODE )
         res <= 0;
@@ -1288,7 +1288,7 @@ always @(posedge clk)
 
 
 always @(posedge clk)
-    if ( reset ) dst_reg <= SEL_A;
+    if ( ~reset_n ) dst_reg <= SEL_A;
     else
         if( state == DECODE && RDY )
             casez( IR )
@@ -1328,7 +1328,7 @@ always @(posedge clk)
 
 
 always @(posedge clk)
-    if ( reset ) src_reg <= SEL_A;
+    if ( ~reset_n ) src_reg <= SEL_A;
     else
         if( state == DECODE && RDY )
             casez( IR )
@@ -1374,7 +1374,7 @@ always @(posedge clk)
 
 `ifdef PRESYNC
 always @*
-    if ( reset ) pre_src_reg = SEL_A;
+    if ( ~reset_n ) pre_src_reg = SEL_A;
     else if( presync && state == DECODE && RDY )
         casez( IR )
             8'b1011_1010:   // TSX
@@ -1407,7 +1407,7 @@ always @*
 
 
 always @(posedge clk)
-    if ( reset ) index_sel <= SEL_X;
+    if ( ~reset_n) index_sel <= SEL_X;
     else
         if( state == DECODE && RDY )
             casez( IR )
@@ -1872,15 +1872,15 @@ always @(posedge clk)
             endcase
 
 
-reg NMI_1 = 0;          // delayed NMI signal
+reg NMI_1_n = 1;        // delayed NMI signal
 
 always @(posedge clk)
-    NMI_1 <= NMI;
+    NMI_1_n <= NMI_n;
 
 always @(posedge clk )
     if( NMI_edge && state == BRK2 )
         NMI_edge <= 0;
-    else if( NMI & ~NMI_1 )
+    else if( ~NMI_n & NMI_1_n )
         NMI_edge <= 1;
 
 endmodule

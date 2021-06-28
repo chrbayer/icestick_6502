@@ -18,16 +18,16 @@
  * on the output pads if external memory is required.
  */
 
-module cpu_6502( clk, reset, AB, DI, DO, WE, IRQ, NMI, RDY );
+module cpu_6502( clk, reset_n, AB, DI, DO, WE_n, IRQ_n, NMI_n, RDY );
 
 input clk;              // CPU clock
-input reset;            // reset signal
+input reset_n;          // reset signal
 output reg [15:0] AB;   // address bus
 input [7:0] DI;         // data in, read bus
 output [7:0] DO;        // data out, write bus
-output WE;              // write enable
-input IRQ;              // interrupt request
-input NMI;              // non-maskable interrupt request
+output WE_n;            // write enable
+input IRQ_n;            // interrupt request
+input NMI_n;            // non-maskable interrupt request
 input RDY;              // Ready signal. Pauses CPU when RDY=0
 
 /*
@@ -64,7 +64,7 @@ reg  [7:0] BI;          // ALU Input B
 wire [7:0] DI;          // Data In
 wire [7:0] IR;          // Instruction register
 reg  [7:0] DO;          // Data Out
-reg  WE;                // Write Enable
+reg  WE_n;              // Write Enable
 reg  CI;                // Carry In
 wire CO;                // Carry Out
 wire [7:0] PCH = PC[15:8];
@@ -295,7 +295,7 @@ always @*
  */
 always @*
     case( state )
-        DECODE:         if( (~I & IRQ) | NMI_edge )
+        DECODE:         if( (~I & ~IRQ_n) | NMI_edge )
                             PC_temp = { ABH, ABL };
                         else
                             PC_temp = PC;
@@ -322,7 +322,7 @@ always @*
  */
 always @*
     case( state )
-        DECODE:         if( (~I & IRQ) | NMI_edge )
+        DECODE:         if( (~I & ~IRQ_n) | NMI_edge )
                             PC_inc = 0;
                         else
                             PC_inc = 1;
@@ -433,7 +433,7 @@ always @*
 
         PUSH1:   DO = php ? P : ADD;
 
-        BRK2:    DO = (IRQ | NMI_edge) ? (P & 8'b1110_1111) : P;
+        BRK2:    DO = (~IRQ_n | NMI_edge) ? (P & 8'b1110_1111) : P;
 
         default: DO = regfile;
     endcase
@@ -450,16 +450,16 @@ always @*
         JSR0,
         JSR1,
         PUSH1,
-        WRITE:   WE = 1;
+        WRITE:   WE_n = 0;
 
         INDX3,  // only if doing a STA, STX or STY
         INDY3,
         ABSX2,
         ABS1,
         ZPX1,
-        ZP0:     WE = store;
+        ZP0:     WE_n = ~store;
 
-        default: WE = 0;
+        default: WE_n = 1;
     endcase
 
 /*
@@ -837,7 +837,7 @@ always @(posedge clk )
  */
 
 always @(posedge clk )
-    if( reset )
+    if( !reset_n )
         IRHOLD_valid <= 0;
     else if( RDY ) begin
         if( state == PULL0 || state == PUSH0 ) begin
@@ -847,7 +847,7 @@ always @(posedge clk )
             IRHOLD_valid <= 0;
     end
 
-assign IR = (IRQ & ~I) | NMI_edge ? 8'h00 :
+assign IR = (~IRQ_n & ~I) | NMI_edge ? 8'h00 :
                      IRHOLD_valid ? IRHOLD : DIMUX;
 
 always @(posedge clk )
@@ -859,8 +859,8 @@ assign DIMUX = ~RDY ? DIHOLD : DI;
 /*
  * Microcode state machine
  */
-always @(posedge clk or posedge reset)
-    if( reset )
+always @(posedge clk or negedge reset_n)
+    if( !reset_n )
         state <= BRK0;
     else if( RDY ) case( state )
         DECODE  :
@@ -964,7 +964,7 @@ always @(posedge clk or posedge reset)
  */
 
 always @(posedge clk)
-     if( reset )
+     if( !reset_n )
          res <= 1;
      else if( state == DECODE )
          res <= 0;
@@ -1206,15 +1206,15 @@ always @*
     endcase
 
 
-reg NMI_1 = 0;          // delayed NMI signal
+reg NMI_1_n = 1;        // delayed NMI signal
 
 always @(posedge clk)
-    NMI_1 <= NMI;
+    NMI_1_n <= NMI_n;
 
 always @(posedge clk )
     if( NMI_edge && state == BRK3 )
         NMI_edge <= 0;
-    else if( NMI & ~NMI_1 )
+    else if( ~NMI_n & NMI_1_n )
         NMI_edge <= 1;
 
 endmodule
