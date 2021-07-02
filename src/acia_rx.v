@@ -3,15 +3,16 @@
 
 module acia_rx(
 	input clk,				  // system clock
+	input pclk,				  // peripheral clock
 	input reset_n,			  // system reset
 	input rx_serial,		  // raw serial input
 	output reg [7:0] rx_dat,  // received byte
 	output reg rx_stb,        // received data available
 	output reg rx_err         // received data error
 );
-	// sym rate counter for 115200bps @ 16MHz clk
-    parameter SCW = 8;
-	parameter sym_cnt = 139;
+	// sym rate counter for 9600bps @ 16MHz clk
+    parameter SCW = 11;
+	parameter sym_cnt = 1667;
 
 	// input sync & deglitch
 	reg [7:0] in_pipe;
@@ -25,7 +26,7 @@ module acia_rx(
 			in_pipe <= 8'hff;
 			in_state <= 1'b1;
 		end
-		else
+		else if(pclk)
 		begin
 			// shift in a bit
 			in_pipe <= {in_pipe[6:0],rx_serial};
@@ -49,7 +50,7 @@ module acia_rx(
 			rx_stb <= 1'b0;
 			rx_err <= 1'b0;
 		end
-		else
+		else if(pclk)
 		begin
 			if(!rx_busy)
 			begin

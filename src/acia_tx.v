@@ -3,15 +3,16 @@
 
 module acia_tx(
 	input clk,				// system clock
+	input pclk,				// peripheral clock
 	input reset_n,			// system reset
 	input [7:0] tx_dat,		// transmit data byte
 	input tx_start,			// trigger transmission
 	output tx_serial,		// tx serial output
 	output reg tx_busy		// tx is active (not ready)
 );
-	// sym rate counter for 115200bps @ 16MHz clk
-    parameter SCW = 8;		// rate counter width
-	parameter sym_cnt = 139;	// rate count value
+	// sym rate counter for 9600bps @ 16MHz clk
+    parameter SCW = 11;
+	parameter sym_cnt = 1667;
 
 	// transmit machine
 	reg [8:0] tx_sr;
@@ -26,7 +27,7 @@ module acia_tx(
 			tx_rcnt <= {SCW{1'b0}};
 			tx_busy <= 1'b0;
 		end
-		else
+		else if(pclk)
 		begin
 			if(!tx_busy)
 			begin

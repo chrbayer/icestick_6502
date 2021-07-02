@@ -23,8 +23,6 @@ module mos6526 (
   input  wire       flag_n,
   output reg        pc_n,
 
-  input  wire       tod,
-
   input  wire       sp_in,
   output reg        sp_out,
 
@@ -84,6 +82,29 @@ reg        int_reset;
 
 wire       rd = !cs_n & rw;
 wire       wr = !cs_n & !rw;
+
+// generate 50 Hz tod clock
+localparam tod_cnt = 16000000 / 50;
+localparam TDW = $clog2(tod_cnt);
+
+reg tod;
+reg [TDW-1:0] tod_counter;
+
+always @(posedge clk or negedge reset_n)
+begin
+  if(~reset_n)
+  begin
+    tod <= 0;
+    tod_counter <= 0;
+  end
+  else if(tod_counter == tod_cnt[TDW-1:0])
+  begin
+    tod <= 1;
+    tod_counter <= 0;
+  end
+  else tod_counter <= tod_counter + 1;
+end
+
 
 // Register Decoding
 always @(posedge clk) begin

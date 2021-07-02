@@ -3,6 +3,7 @@
 
 module acia(
 	input clk,				// system clock
+	input pclk,				// peripheral clock
 	input reset_n,			// system reset
 	input cs_n,				// chip select
 	input we_n,				// write enable
@@ -15,11 +16,9 @@ module acia(
 );
 	// hard-coded bit-rate
 	localparam sym_rate = 9600;
-    localparam clk_freq = 12000000;
+    localparam clk_freq = 16000000;
     localparam sym_cnt = clk_freq / sym_rate;
 	localparam SCW = $clog2(sym_cnt);
-
-	wire [SCW-1:0] sym_cntr = sym_cnt[SCW-1:0];
 
 	// generate tx_start signal on write to register 1
 	wire tx_start = ~cs_n & rs & ~we_n;
@@ -37,7 +36,7 @@ module acia(
 			tx_start_control <= 2'b00;
 			receive_interrupt_enable <= 1'b0;
 		end
-		else if(~cs_n & ~rs & ~we_n)
+		else if(pclk & ~cs_n & ~rs & ~we_n)
 			{
 				receive_interrupt_enable,
 				tx_start_control,
@@ -59,7 +58,7 @@ module acia(
 		end
 		else
 		begin
-			if(~cs_n & we_n)
+			if(pclk & ~cs_n & we_n)
 			begin
 				if(rs)
 					dout <= rx_dat;
@@ -80,7 +79,7 @@ module acia(
 			txe <= 1'b1;
 			prev_tx_busy <= 1'b0;
 		end
-		else
+		else if(pclk)
 		begin
 			prev_tx_busy <= tx_busy;
 
@@ -98,7 +97,7 @@ module acia(
 	begin
 		if(~reset_n)
 			rxf <= 1'b0;
-		else
+		else if(pclk)
 		begin
 			if(rx_stb)
 				rxf <= 1'b1;
@@ -128,6 +127,7 @@ module acia(
 	)
 	my_rx(
 		.clk(clk),				// system clock
+		.pclk(pclk),			// peripheral clock
 		.reset_n(acia_rst_n), 	// system reset
 		.rx_serial(rx),		    // raw serial input
 		.rx_dat(rx_dat),        // received byte
@@ -142,6 +142,7 @@ module acia(
 	)
 	my_tx(
 		.clk(clk),				// system clock
+		.pclk(pclk),			// peripheral clock
 		.reset_n(acia_rst_n),	// system reset
 		.tx_dat(din),           // transmit data byte
 		.tx_start(tx_start),    // trigger transmission

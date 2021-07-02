@@ -2,7 +2,7 @@
 // 02-11-19 E. Brombaugh
 
 module soc_6502(
-    input clk,              // SOC clock
+    input clk,              // SOC System clock
     input reset_n,          // Low-true reset
 
 	output reg [7:0] gpio_o,
@@ -11,6 +11,30 @@ module soc_6502(
 	input RX,				// serial RX
 	output TX				// serial TX
 );
+
+	// Peripheral clock
+    localparam pclk_cnt = 40000000 / 16000000;
+	localparam PCW = $clog2(pclk_cnt);
+
+	reg pclk;
+	reg [PCW-1:0] pclk_counter;
+
+	always @(posedge clk or negedge reset_n)
+	begin
+		if(~reset_n)
+		begin
+			pclk <= 0;
+			pclk_counter <= 0;
+		end
+		else if(pclk_counter == pclk_cnt[PCW-1:0])
+		begin
+			pclk <= 1;
+			pclk_counter <= 0;
+		end
+		else pclk_counter <= pclk_counter + 1;
+	end
+
+
     // The 6502
     wire [15:0] CPU_AB;
     reg [7:0] CPU_DI;
@@ -46,20 +70,11 @@ module soc_6502(
 		ram_do <= ram_mem[CPU_AB[11:0]];
 
 	// CIA @ page 10-1f
-	reg phi2;
 	wire [7:0] cia_do;
 	wire cia_irq_n;
-	reg [7:0] pa_out;
-	reg [7:0] pb_in;
-	reg pc_n;
-	reg tod;
-	reg sp_in;
-	reg sp_out;
-	reg cnt_in;
-	reg cnt_out;
 	mos6526 umos6526(
 		.clk(clk),
-		.phi2(phi2), // Peripheral clock
+		.phi2(pclk), // peripheral clock
 		.reset_n(reset_n),
 		.cs_n(p1),
 		.rw(CPU_WE_n),
@@ -67,16 +82,11 @@ module soc_6502(
 		.db_in(CPU_DO),
 		.db_out(cia_do),
 		.pa_in(gpio_i),
-		.pa_out(pa_out),
-		.pb_in(pb_in),
+		.pb_in(gpio_i),
 		.pb_out(gpio_o),
 		.flag_n(1'b1),
-		.pc_n(pc_n),
-		.tod(tod),
-		.sp_in(sp_in),
-		.sp_out(sp_out),
-		.cnt_in(cnt_in),
-		.cnt_out(cnt_out),
+		.sp_in(1'b0),
+		.cnt_in(1'b0),
 		.irq_n(cia_irq_n)
 	);
 
@@ -85,6 +95,7 @@ module soc_6502(
 	wire acia_irq_n;
 	acia uacia(
 		.clk(clk),				// system clock
+		.pclk(pclk),			// peripheral clock
 		.reset_n(reset_n),		// system reset
 		.cs_n(p2),				// chip select
 		.we_n(CPU_WE_n),		// write enable

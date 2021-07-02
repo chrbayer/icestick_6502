@@ -4,8 +4,8 @@ module hx8k_6502_top(
 	input  clk,
 	output LED1,
 	output LED2,
-	input BUT1,
-	input BUT2
+	input  BUT1,
+	input  BUT2
 );
 
         wire       CLK1;

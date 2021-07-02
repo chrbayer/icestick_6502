@@ -22,7 +22,7 @@ DEVICE = hx8k
 
 YOSYS = yosys
 NEXTPNR = nextpnr-ice40
-NEXTPNR_ARGS = --pre-pack $(SDC) --randomize-seed --placer sa
+NEXTPNR_ARGS = --pre-pack $(SDC) --randomize-seed #--placer sa
 ICEPACK = icepack
 ICETIME = icetime
 ICEPROG = iceprogduino
