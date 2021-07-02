@@ -10,9 +10,9 @@ module acia_tx(
 	output tx_serial,		// tx serial output
 	output reg tx_busy		// tx is active (not ready)
 );
-	// sym rate counter for 9600bps @ 16MHz clk
-    parameter SCW = 11;
-	parameter sym_cnt = 1667;
+	// sym rate counter for 9600bps @ 4MHz clk
+    parameter SCW = 9;
+	parameter sym_cnt = 417;
 
 	// transmit machine
 	reg [8:0] tx_sr;
@@ -29,7 +29,7 @@ module acia_tx(
 		end
 		else if(pclk)
 		begin
-			if(!tx_busy)
+			if(~tx_busy)
 			begin
 				if(tx_start)
 				begin

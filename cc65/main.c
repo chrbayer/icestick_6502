@@ -9,13 +9,16 @@
 #include "fpga.h"
 #include "acia.h"
 
-unsigned long cnt;
 unsigned char x = 0;
 char txt_buf[32];
 unsigned long i;
 
+extern void test_asm(void);
+
 int main()
 {
+	test_asm();
+
 	// Send startup message
 	acia_tx_str("\n\n\rIcestick 6502 cc65 serial test\n\n\r");
 
@@ -26,6 +29,12 @@ int main()
 	acia_tx_str(txt_buf);
 	acia_tx_str("\n\r");
 
+
+	// configure outputs
+	CIA_DDRB = 0xC0;
+	CIA_TB_LO = 0x00;
+	CIA_TB_HI = 0x40;
+
 	// enable ACIA IRQ for serial echo in background
 	ACIA_CTRL = 0x80;
 	asm("CLI");
@@ -34,13 +43,14 @@ int main()
     while(1)
     {
 		// delay
-		cnt = 1024;
-		while(cnt--)
+		CIA_CRB = 0x09;
+
+		while (CIA_CRB & 0x01)
 		{
 		}
 
         // write counter msbyte to GPIO
-        GPIO_DATA = (x & 0xC0);
+        CIA_PRB = (x & 0xC0);
         x++;
     }
 

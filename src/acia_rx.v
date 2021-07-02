@@ -10,9 +10,9 @@ module acia_rx(
 	output reg rx_stb,        // received data available
 	output reg rx_err         // received data error
 );
-	// sym rate counter for 9600bps @ 16MHz clk
-    parameter SCW = 11;
-	parameter sym_cnt = 1667;
+	// sym rate counter for 9600bps @ 4MHz clk
+    parameter SCW = 9;
+	parameter sym_cnt = 417;
 
 	// input sync & deglitch
 	reg [7:0] in_pipe;
@@ -34,7 +34,7 @@ module acia_rx(
 			// update state
 			if(in_state && all_zero)
 				in_state <= 1'b0;
-			else if(!in_state && all_one)
+			else if(~in_state && all_one)
 				in_state <= 1'b1;
 		end
 
@@ -44,7 +44,7 @@ module acia_rx(
 	reg [SCW-1:0] rx_rcnt;
 	reg rx_busy;
 	always @(posedge clk)
-		if(!reset_n)
+		if(~reset_n)
 		begin
 			rx_busy <= 1'b0;
 			rx_stb <= 1'b0;
@@ -52,9 +52,9 @@ module acia_rx(
 		end
 		else if(pclk)
 		begin
-			if(!rx_busy)
+			if(~rx_busy)
 			begin
-				if(!in_state)
+				if(~in_state)
 				begin
 					// found start bit - wait 1/2 bit to sample
 					rx_bcnt <= 4'h9;

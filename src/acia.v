@@ -16,7 +16,7 @@ module acia(
 );
 	// hard-coded bit-rate
 	localparam sym_rate = 9600;
-    localparam clk_freq = 16000000;
+    localparam clk_freq = 4000000;
     localparam sym_cnt = clk_freq / sym_rate;
 	localparam SCW = $clog2(sym_cnt);
 
@@ -36,7 +36,7 @@ module acia(
 			tx_start_control <= 2'b00;
 			receive_interrupt_enable <= 1'b0;
 		end
-		else if(pclk & ~cs_n & ~rs & ~we_n)
+		else if(~cs_n & ~rs & ~we_n)
 			{
 				receive_interrupt_enable,
 				tx_start_control,
@@ -58,7 +58,7 @@ module acia(
 		end
 		else
 		begin
-			if(pclk & ~cs_n & we_n)
+			if(~cs_n & we_n)
 			begin
 				if(rs)
 					dout <= rx_dat;

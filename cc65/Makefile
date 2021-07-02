@@ -20,8 +20,11 @@ all: $(OBJ).hex
 $(OBJ).hex: $(OBJ)
 	$(HEXDUMP) $(HEXDUMP_ARGS) $< > $@
 
-$(OBJ): $(SRC)
-	$(CL65) $(CLFLAGS) -o $(OBJ) $(SRC) $(LIB)
+test_asm.o: test_asm.s
+	ca65 --cpu 4510 test_asm.s
+
+$(OBJ): $(SRC) test_asm.o
+	$(CL65) $(CLFLAGS) -o $(OBJ) $(SRC) $(LIB) test_asm.o
 
 clean:
 	-rm -f *.o $(OBJ) $(OBJ).hex $(OBJ).map

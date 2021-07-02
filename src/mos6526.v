@@ -80,11 +80,11 @@ reg [ 2:0] cnt_pulsecnt;
 
 reg        int_reset;
 
-wire       rd = !cs_n & rw;
-wire       wr = !cs_n & !rw;
+wire       rd = ~cs_n & rw;
+wire       wr = ~cs_n & ~rw;
 
 // generate 50 Hz tod clock
-localparam tod_cnt = 16000000 / 50;
+localparam tod_cnt = 4000000 / 50;
 localparam TDW = $clog2(tod_cnt);
 
 reg tod;
@@ -108,7 +108,7 @@ end
 
 // Register Decoding
 always @(posedge clk) begin
-  if (!reset_n) db_out <= 8'h00;
+  if (~reset_n) db_out <= 8'h00;
   else if (rd)
     case (rs)
       4'h0: db_out <= pa_in;
@@ -132,7 +132,7 @@ end
 
 // Port A Output
 always @(posedge clk) begin
-  if (!reset_n) begin
+  if (~reset_n) begin
     pra  <= 8'h00;
     ddra <= 8'h00;
   end
@@ -147,7 +147,7 @@ end
 
 // Port B Output
 always @(posedge clk) begin
-  if (!reset_n) begin
+  if (~reset_n) begin
     prb  <= 8'h00;
     ddrb <= 8'h00;
   end
@@ -166,19 +166,19 @@ end
 
 // FLAG Input
 always @(posedge clk) begin
-  if (!reset_n) icr[4] <= 1'b0;
+  if (~reset_n) icr[4] <= 1'b0;
   else begin
     if (phi2) begin
       if (int_reset) icr[4] <= 1'b0;
       flag_n_prev <= flag_n;
-      if (!flag_n && flag_n_prev) icr[4] <= 1'b1;
+      if (~flag_n && flag_n_prev) icr[4] <= 1'b1;
     end
   end
 end
 
 // Port Control Output
 always @(posedge clk) begin
-  if (!cs_n && rs == 4'h1) pc_n <= 1'b0;
+  if (~cs_n && rs == 4'h1) pc_n <= 1'b0;
   else pc_n <= phi2 ? 1'b1 : pc_n;
 end
 
@@ -187,11 +187,11 @@ reg countA0, countA1, countA2, countA3, loadA1, oneShotA0;
 reg timerAff;
 wire timerAin = cra[5] ? countA1 : 1'b1;
 wire [15:0] newTimerAVal = countA3 ? (timer_a - 1'b1) : timer_a;
-wire timerAoverflow = !&newTimerAVal & countA2;
+wire timerAoverflow = ~|newTimerAVal & countA2;
 
 always @(posedge clk) begin
 
-  if (!reset_n) begin
+  if (~reset_n) begin
     ta_lo          <= 8'hff;
     ta_hi          <= 8'hff;
     cra            <= 8'h00;
@@ -257,11 +257,11 @@ reg countB0, countB1, countB2, countB3, loadB1, oneShotB0;
 reg timerBff;
 wire timerBin = crb[6] ? timerAoverflow & (~crb[5] | cnt_in) : (~crb[5] | countB1);
 wire [15:0] newTimerBVal = countB3 ? (timer_b - 1'b1) : timer_b;
-wire timerBoverflow = !&newTimerBVal & countB2;
+wire timerBoverflow = ~|newTimerBVal & countB2;
 
 always @(posedge clk) begin
 
-  if (!reset_n) begin
+  if (~reset_n) begin
     tb_lo          <= 8'hff;
     tb_hi          <= 8'hff;
     crb            <= 8'h00;
@@ -326,7 +326,7 @@ end
 
 // Time of Day
 always @(posedge clk) begin
-  if (!reset_n) begin
+  if (~reset_n) begin
     tod_10ths   <= 4'h0;
     tod_sec     <= 7'h00;
     tod_min     <= 7'h00;
@@ -365,7 +365,7 @@ always @(posedge clk) begin
   tod_prev <= tod;
   tod_tick <= 1'b0;
   if (tod_run) begin
-    tod_count <= (tod && !tod_prev) ? tod_count + 1'b1 : tod_count;
+    tod_count <= (tod && ~tod_prev) ? tod_count + 1'b1 : tod_count;
     if ((cra[7] && tod_count == 3'h5) || tod_count == 3'h6) begin
       tod_tick  <= 1'b1;
       tod_count <= 3'h0;
@@ -403,10 +403,10 @@ always @(posedge clk) begin
   else tod_count <= 3'h0;
 
   if (phi2) begin
-    if (!tod_latched) tod_latch <= {tod_hr, tod_min, tod_sec, tod_10ths};
+    if (~tod_latched) tod_latch <= {tod_hr, tod_min, tod_sec, tod_10ths};
     if ({tod_hr, tod_min, tod_sec, tod_10ths} == tod_alarm) begin
       tod_alarm_reg <= 1'b1;
-      icr[2]   <= !tod_alarm_reg ? 1'b1 : icr[2];
+      icr[2]   <= ~tod_alarm_reg ? 1'b1 : icr[2];
     end
     else tod_alarm_reg <= 1'b0;
     if (int_reset) icr[2] <= 1'b0;
@@ -415,7 +415,7 @@ end
 
 // Serial Port Input/Output
 always @(posedge clk) begin
-  if (!reset_n) begin
+  if (~reset_n) begin
     sdr         <= 8'h00;
     sp_out      <= 1'b0;
     sp_pending  <= 1'b0;
@@ -438,25 +438,25 @@ always @(posedge clk) begin
     if (phi2) begin
       if (int_reset) icr[3] <= 1'b0;
 
-      if (!cra[6]) begin // input
+      if (~cra[6]) begin // input
         if (sp_received) begin
           sdr         <= sp_shiftreg;
           icr[3]      <= 1'b1;
           sp_received <= 1'b0;
           sp_shiftreg <= 8'h00;
         end
-        else if (cnt_in && !cnt_in_prev) begin
+        else if (cnt_in && ~cnt_in_prev) begin
           sp_shiftreg <= {sp_shiftreg[6:0], sp_in};
           sp_received <= (cnt_pulsecnt == 3'h7) ? 1'b1 : sp_received;
         end
       end
       else if (cra[6]) begin // output
-        if (sp_pending && !sp_transmit) begin
+        if (sp_pending && ~sp_transmit) begin
           sp_pending  <= 1'b0;
           sp_transmit <= 1'b1;
           sp_shiftreg <= sdr;
         end
-        else if (!cnt_out && cnt_out_prev) begin
+        else if (~cnt_out && cnt_out_prev) begin
           if (cnt_pulsecnt == 3'h7) begin
             icr[3]      <= 1'b1;
             sp_transmit <= 1'b0;
@@ -471,7 +471,7 @@ end
 
 // CNT Input/Output
 always @(posedge clk) begin
-  if (!reset_n) begin
+  if (~reset_n) begin
     cnt_out      <= 1'b1;
     cnt_out_prev <= 1'b1;
     cnt_pulsecnt <= 3'h0;
@@ -480,11 +480,11 @@ always @(posedge clk) begin
     cnt_in_prev  <= cnt_in;
     cnt_out_prev <= cnt_out;
 
-    if (!cra[6] && cnt_in && !cnt_in_prev) cnt_pulsecnt <= cnt_pulsecnt + 1'b1;
+    if (~cra[6] && cnt_in && ~cnt_in_prev) cnt_pulsecnt <= cnt_pulsecnt + 1'b1;
     else if (cra[6]) begin
       if (sp_transmit) begin
         cnt_out <= timerAoverflow ? ~cnt_out : cnt_out;
-        if (!cnt_out && cnt_out_prev) cnt_pulsecnt <= cnt_pulsecnt + 1'b1;
+        if (~cnt_out && cnt_out_prev) cnt_pulsecnt <= cnt_pulsecnt + 1'b1;
       end
       else cnt_out <= timerAoverflow ? 1'b1 : cnt_out;
     end
@@ -495,7 +495,7 @@ end
 reg [7:0] imr_reg;
 
 always @(posedge clk) begin
-  if (!reset_n) begin
+  if (~reset_n) begin
     imr       <= 5'h00;
     imr_reg   <= 0;
     irq_n     <= 1'b1;

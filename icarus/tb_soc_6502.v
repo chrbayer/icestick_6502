@@ -5,7 +5,7 @@
 
 module tb_soc_6502;
     reg clk;
-    reg reset;
+    reg reset_n;
 	wire [7:0] gpio_o;
 	reg [7:0] gpio_i;
 
@@ -23,11 +23,11 @@ module tb_soc_6502;
 
         // init regs
         clk = 1'b0;
-        reset = 1'b1;
+        reset_n = 1'b0;
 
         // release reset
         #10
-        reset = 1'b0;
+        reset_n = 1'b1;
 
 `ifdef VERIFICATION
 `ifdef VERIFICATION_6502
@@ -43,14 +43,14 @@ module tb_soc_6502;
 		#12830000 $finish;
 `endif
 `else       // stop after 1 sec
-		#10000 $finish;
+		#10000000 $finish;
 `endif
     end
 
     // Unit under test
     soc_6502 uut(
         .clk(clk),              // clock
-        .reset(reset),          // High-true reset
+        .reset_n(reset_n),      // Low-true reset
         .gpio_o(gpio_o),        // gpio output
         .gpio_i(gpio_i)         // gpio input
     );

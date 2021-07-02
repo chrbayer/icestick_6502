@@ -28,7 +28,6 @@ ICETIME = icetime
 ICEPROG = iceprogduino
 ICEBRAM = icebram
 VERILATOR = verilator
-TECH_LIB = /usr/local/share/yosys/ice40/cells_sim.v
 
 all: $(PROJ).bin
 

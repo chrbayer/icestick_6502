@@ -5,7 +5,7 @@ module soc_6502(
     input clk,              // SOC System clock
     input reset_n,          // Low-true reset
 
-	output reg [7:0] gpio_o,
+	output wire [7:0] gpio_o,
 	input [7:0] gpio_i,
 
 	input RX,				// serial RX
@@ -13,7 +13,9 @@ module soc_6502(
 );
 
 	// Peripheral clock
-    localparam pclk_cnt = 40000000 / 16000000;
+    localparam clk_freq    = 40000000;
+    localparam periph_freq = 4000000;
+    localparam pclk_cnt = (clk_freq / periph_freq);
 	localparam PCW = $clog2(pclk_cnt);
 
 	reg pclk;
@@ -31,7 +33,11 @@ module soc_6502(
 			pclk <= 1;
 			pclk_counter <= 0;
 		end
-		else pclk_counter <= pclk_counter + 1;
+		else
+		begin
+			pclk <= 0;
+			pclk_counter <= pclk_counter + 1;
+		end
 	end
 
 
@@ -107,7 +113,7 @@ module soc_6502(
 		.irq_n(acia_irq_n)		// interrupt request
 	);
 
-	assign CPU_IRQ_n = cia_irq_n | acia_irq_n;
+	assign CPU_IRQ_n = cia_irq_n & acia_irq_n;
 
 	// ROM @ pages f0,f1...
 	reg [7:0] rom_do;
