@@ -64,6 +64,8 @@ module soc_6502(
 	wire p2 = (CPU_AB[15:12] == 4'h2) ? 0 : 1;
 	wire pf = (CPU_AB[15:12] == 4'hf) ? 0 : 1;
 
+	wire [5:0] ios = CPU_AB[11:6];
+
 	// RAM @ pages 00-0f
 	reg [7:0] ram_mem [0:4095];
 	initial
@@ -82,7 +84,7 @@ module soc_6502(
 		.clk(clk),
 		.phi2(pclk), // peripheral clock
 		.reset_n(reset_n),
-		.cs_n(p1),
+		.cs_n(p1 | (ios != 6'h00)),
 		.rw(CPU_WE_n),
 		.rs(CPU_AB[3:0]),
 		.db_in(CPU_DO),
@@ -100,17 +102,17 @@ module soc_6502(
 	wire [7:0] acia_do;
 	wire acia_irq_n;
 	acia uacia(
-		.clk(clk),				// system clock
-		.pclk(pclk),			// peripheral clock
-		.reset_n(reset_n),		// system reset
-		.cs_n(p2),				// chip select
-		.we_n(CPU_WE_n),		// write enable
-		.rs(CPU_AB[0]),			// register select
-		.rx(RX),				// serial receive
-		.din(CPU_DO),			// data bus input
-		.dout(acia_do),			// data bus output
-		.tx(TX),				// serial transmit
-		.irq_n(acia_irq_n)		// interrupt request
+		.clk(clk),						// system clock
+		.pclk(pclk),					// peripheral clock
+		.reset_n(reset_n),				// system reset
+		.cs_n(p1 | (ios != 6'h01)),		// chip select
+		.we_n(CPU_WE_n),				// write enable
+		.rs(CPU_AB[0]),					// register select
+		.rx(RX),						// serial receive
+		.din(CPU_DO),					// data bus input
+		.dout(acia_do),					// data bus output
+		.tx(TX),						// serial transmit
+		.irq_n(acia_irq_n)				// interrupt request
 	);
 
 	assign CPU_IRQ_n = cia_irq_n & acia_irq_n;
@@ -160,14 +162,21 @@ module soc_6502(
 
 	// data mux
 	reg [3:0] mux_sel;
+	reg [5:0] sec_sel;
 	always @(posedge clk)
-		mux_sel <= CPU_AB[15:12];
+		begin
+			mux_sel <= CPU_AB[15:12];
+			sec_sel <= CPU_AB[11:6];
+		end
 	always @(*)
 		casez(mux_sel)
-			4'h0: CPU_DI = ram_do;
-			4'h1: CPU_DI = cia_do;
-			4'h2: CPU_DI = acia_do;
-			4'hf: CPU_DI = rom_do;
+			4'h0:    CPU_DI = ram_do;
+			4'h1:    casez(sec_sel)
+					     6'h00:   CPU_DI = cia_do;
+						 6'h01:   CPU_DI = acia_do;
+						 default: CPU_DI = rom_do;
+					 endcase
+			4'hf:    CPU_DI = rom_do;
 			default: CPU_DI = rom_do;
 		endcase
 endmodule

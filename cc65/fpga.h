@@ -23,7 +23,7 @@
 #define CIA_CRA         (*(volatile unsigned char *) 0x100E)
 #define CIA_CRB         (*(volatile unsigned char *) 0x100F)
 
-#define ACIA_CTRL (*(unsigned char *) 0x2000)
-#define ACIA_DATA (*(unsigned char *) 0x2001)
+#define ACIA_CTRL       (*(volatile unsigned char *) 0x1040)
+#define ACIA_DATA       (*(volatile unsigned char *) 0x1041)
 
 #endif
