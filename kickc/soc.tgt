@@ -1,0 +1,11 @@
+{
+    "description": "FPGA based SOC.",
+    "extension": "bin",
+    "link": "soc.ld",
+    "cpu": "csg65ce02",
+    "interrupt": "hardware_clobber",
+    "zp_reserve": [ ],
+    "defines": {
+        "__SOC__": 1
+    }
+}

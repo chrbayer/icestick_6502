@@ -3,6 +3,11 @@ workspace.code-workspace
 cc65/rom
 cc65/rom.hex
 cc65/rom.map
+cc65/*.o
+cc65/*.lst
+kickc/*.asm
+kickc/*.bin
+kickc/rom.hex
 icarus/rom.hex
 icarus/tb_soc_6502
 icarus/tb_soc_6502_verification
@@ -10,7 +15,7 @@ icarus/tb_soc_65C02_verification
 icarus/tb_soc_65C02_decimal_test
 icarus/tb_soc_6502.vcd
 icarus/tb_soc_6502.lxt
-icarus/default.gtkw
+icarus/*.gtkw
 icarus/obj_dir
 icestorm/code.hex
 icestorm/rom.hex

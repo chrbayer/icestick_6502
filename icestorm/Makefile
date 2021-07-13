@@ -41,8 +41,8 @@ $(FAKE_HEX):
 	$(NEXTPNR) $(NEXTPNR_ARGS) --$(DEVICE) --json $< --pcf $(PIN_DEF) --asc $@
 
 $(REAL_HEX):
-	$(MAKE) -C ../cc65/
-	cp ../cc65/$(FAKE_HEX) ./$(REAL_HEX)
+	$(MAKE) -C ../kickc/
+	cp ../kickc/$(FAKE_HEX) ./$(REAL_HEX)
 
 assembly:
 	$(MAKE) -C ../assembly/
@@ -67,7 +67,7 @@ lint: $(SRC)
 
 clean:
 	rm -f $(PROJ).json $(PROJ).asc temp.asc $(PROJ).rpt $(PROJ).bin $(PROJ).hex code.hex rom.hex
-	$(MAKE) clean -C ../cc65/
+	$(MAKE) clean -C ../kickc/
 
 .SECONDARY:
 .PHONY: all prog recode clean

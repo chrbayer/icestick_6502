@@ -43,7 +43,7 @@ module tb_soc_6502;
 		#12830000 $finish;
 `endif
 `else       // stop after 1 sec
-		#10000000 $finish;
+		#100000 $finish;
 `endif
     end
 
