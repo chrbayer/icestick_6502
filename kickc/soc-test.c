@@ -53,7 +53,7 @@ void main() {
 
 // Interrupt Vectors
 #pragma data_seg(Vectors)
-export void (*VECTORS[])() = {
+__export void (*VECTORS[])() = {
     0,
     &main,
     0
