@@ -195,7 +195,7 @@ always @(posedge clk) begin
     ta_lo          <= 8'hff;
     ta_hi          <= 8'hff;
     cra            <= 8'h00;
-    timer_a        <= 16'h0000;
+    timer_a        <= 16'hffff;
     timerAff       <= 1'b0;
     icr[0]         <= 1'b0;
   end
@@ -265,15 +265,13 @@ always @(posedge clk) begin
     tb_lo          <= 8'hff;
     tb_hi          <= 8'hff;
     crb            <= 8'h00;
-    timer_b        <= 16'h0000;
+    timer_b        <= 16'hffff;
     timerBff       <= 1'b0;
     icr[1]         <= 1'b0;
   end
   else begin
     if (phi2) begin
-      if (int_reset) begin
-        icr[1] <= 0;
-      end
+      if (int_reset) icr[1] <= 0;
       countB0 <= cnt_in && ~cnt_in_prev;
       countB1 <= countB0;
       countB2 <= timerBin & crb[0];
@@ -492,25 +490,24 @@ always @(posedge clk) begin
 end
 
 // Interrupt Control
-reg [7:0] imr_reg;
+reg [4:0] imr_reg;
 
 always @(posedge clk) begin
   if (~reset_n) begin
     imr       <= 5'h00;
-    imr_reg   <= 0;
+    imr_reg   <= 5'h00;
     irq_n     <= 1'b1;
     int_reset <= 0;
   end
   else begin
-    if (wr && rs == 4'hd) imr_reg <= db_in;
+    if (wr && rs == 4'hd) imr_reg <= db_in[7] ? imr | db_in[4:0] : imr & ~db_in[4:0];
     if (rd && rs == 4'hd) int_reset <= 1;
 
+    imr <= imr_reg;
+    irq_n <= irq_n ? ~|(imr & icr) : irq_n;
     if (phi2 & int_reset) begin
       irq_n <= 1;
-
-    imr <= imr_reg[7] ? imr | imr_reg[4:0] : imr & ~imr_reg[4:0];
-    irq_n <= irq_n ? ~|(imr & icr) : irq_n;
-	  int_reset <= 0;
+	    int_reset <= 0;
     end
   end
 end
