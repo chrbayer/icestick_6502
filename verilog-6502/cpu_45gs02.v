@@ -1,5 +1,5 @@
 /*
- * verilog model of 65CE02 CPU.
+ * verilog model of 45GS02 CPU.
  *
  * Based on original 6502 "Arlet 6502 Core" by Arlet Ottens
  *
@@ -9,7 +9,7 @@
  * keep this message, and the copyright notice. This code is provided "as is",
  * without any warranties of any kind.
  *
- * Support for 65CE02 instructions and addressing modes by David Banks and Ed Spittles
+ * Support for 45GS02 instructions and addressing modes by David Banks and Ed Spittles
  *
  * (C) 2016 David Banks and Ed Spittles
  *
@@ -36,17 +36,17 @@
 /* `define PRESYNC */
 
 
-module cpu_65ce02 (
-    input clk,              // CPU clock
-    input reset_n,          // reset signal
-    output reg [15:0] AB,   // address bus
-    input [7:0] DI,         // data in, read bus
-    output reg [7:0] DO,    // data out, write bus
-    output reg WE_n,        // write enable
-    input IRQ_n,            // interrupt request
-    input NMI_n,            // non-maskable interrupt request
-    input RDY               // Ready signal. Pauses CPU when RDY=0
-);
+module cpu_45gs02( clk, reset_n, AB, DI, DO, WE_n, IRQ_n, NMI_n, RDY );
+
+input clk;              // CPU clock
+input reset_n;          // reset signal
+output reg [15:0] AB;   // address bus
+input [7:0] DI;         // data in, read bus
+output [7:0] DO;        // data out, write bus
+output WE_n;            // write enable
+input IRQ_n;            // interrupt request
+input NMI_n;            // non-maskable interrupt request
+input RDY;              // Ready signal. Pauses CPU when RDY=0
 
 /*
  * internal signals
@@ -87,8 +87,11 @@ reg DLDZ;               // Delayed Z flag for 16 bit operations
 
 reg  [7:0] AI;          // ALU Input A
 reg  [7:0] BI;          // ALU Input B
+wire [7:0] DI;          // Data In
 wire [7:0] IR;          // Instruction register
+reg  [7:0] DO;          // Data Out
 wire [7:0] AO;          // ALU output after BCD adjustment
+reg  WE_n;              // Write Enable
 reg  CI;                // Carry In
 wire CO;                // Carry Out
 wire [7:0] PCH = PC[15:8];
@@ -757,8 +760,7 @@ always @*
  * ALUs
  */
 
-alu_65ce02 ualu (
-         .clk(clk),
+alu_65ce02 ualu( .clk(clk),
          .op(alu_op),
          .right(alu_shift_right),
          .arith(alu_arith_shift),
@@ -770,8 +772,7 @@ alu_65ce02 ualu (
          .OUT(ADD),
          .V(AV),
          .HC(HC),
-         .RDY(RDY)
-);
+         .RDY(RDY) );
 
 /*
  * Select current ALU operation
