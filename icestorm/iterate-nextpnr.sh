@@ -4,7 +4,7 @@ rm -f hx8k_6502_top.asc
 rm -rf runs
 mkdir -p runs
 
-number=1 maxfreq=0 ; while test $number -le 100 ; do
+number=1 maxfreq=0 ; while test $number -le 50 ; do
     make hx8k_6502_top.asc 2> runs/log$number
     freq=$(make hx8k_6502_top.rpt | grep estimate | cut -d ' ' -f 6 | cut -d '(' -f 2)
     mv hx8k_6502_top.asc runs/asc$number
@@ -13,7 +13,7 @@ number=1 maxfreq=0 ; while test $number -le 100 ; do
         maxfreq=$freq
         maxnum=$number
     fi
-    echo "Current max frequency is $maxfreq"
+    echo "$number: Current frequency is $freq, current max frequency is $maxfreq"
     number=$((number+1))
 done
 
