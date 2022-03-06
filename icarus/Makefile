@@ -16,7 +16,7 @@ VERILATOR = verilator
 all: $(TOP).lxt
 
 $(TOP).lxt: $(TOP)
-	cp ../kickc/rom.hex .
+	cp ../cc65/rom.hex .
 	./$(TOP) -lxt2-space
 
 $(TOP): tb_soc_6502.v $(SOURCES)

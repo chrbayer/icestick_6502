@@ -7,6 +7,50 @@
 .segment  "CODE"
 
 .proc _test_asm: near
+        inw     value16
+        dew     value16
+        clc
+        neg
+        neg
+        lda     value32
+        neg
+        neg
+        adc     value32
+        neg
+        neg
+        sta     value32
+        neg
+        neg
+        adc     value32
+        neg
+        neg
+        sta     value32
+        neg
+        neg
+        eor     value32
+        lda     #<value32
+        sta     indptr
+        lda     #>value32
+        sta     indptr+1
+        clc
+        neg
+        neg
+        lda     (indptr),Z
+        neg
+        neg
+        adc     (indptr),Z
+        neg
+        neg
+        sta     (indptr),Z
+        neg
+        neg
+        adc     (indptr),Z
+        neg
+        neg
+        sta     (indptr),Z
+        neg
+        neg
+        eor     (indptr),Z
         ldx     #0
         inx
         inx
@@ -99,6 +143,10 @@ indjump: .word jmpaddr
 xindjump: .word $0000
           .word jmpaddr
 
+value32: .dword $12345678
+
 .zeropage
 
 value16: .word $0000
+
+indptr:  .word $0000
