@@ -12,7 +12,36 @@
         clc
         neg
         neg
+        neg
+        neg
+        neg
+        neg
+        lda     #$00
+        tax
+        tay
+        taz
+        neg
+        neg
+        bit     value32
+        lda     #$08
+        neg
+        neg
+        bit     value32
+        neg
+        neg
         lda     value32
+        neg
+        neg
+        rol
+        neg
+        neg
+        ror
+        neg
+        neg
+        inc
+        neg
+        neg
+        dec
         neg
         neg
         adc     value32
@@ -143,7 +172,7 @@ indjump: .word jmpaddr
 xindjump: .word $0000
           .word jmpaddr
 
-value32: .dword $12345678
+value32: .dword $C2345678
 
 .zeropage
 
