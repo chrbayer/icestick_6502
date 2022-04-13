@@ -7,9 +7,21 @@
 .segment  "CODE"
 
 .proc _test_asm: near
-        inw     value16
         dew     value16
+        inw     value16
+        neg
+        neg
+        dec     value32
+        neg
+        neg
+        inc     value32
         clc
+        neg
+        neg
+        ror     value32
+        neg
+        neg
+        rol     value32
         neg
         neg
         neg
@@ -172,10 +184,10 @@ indjump: .word jmpaddr
 xindjump: .word $0000
           .word jmpaddr
 
-value32: .dword $C2345678
+value32: .dword $43272376
 
 .zeropage
 
-value16: .word $0000
+value16: .word $4327
 
 indptr:  .word $0000

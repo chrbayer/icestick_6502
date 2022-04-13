@@ -82,8 +82,9 @@ reg  AZ2;               // ALU Second Zero flag, set using TSB/TRB semantics
 wire AV;                // ALU overflow flag
 wire AN1;               // ALU negative flag (BCD adjusted)
 wire HC;                // ALU half carry
-reg DLDC;               // Delayed C flag for 16 bit operations
-reg DLDZ;               // Delayed Z flag for 16 bit operations
+reg DLDC;               // Delayed C flag for 16 bit and 32 bit operations
+reg DLDZ;               // Delayed Z flag for 16 bit and 32 bit operations
+reg DLDN;               // Delayed N flag for right shift 32 bit operations
 
 reg  [7:0] AI;          // ALU Input A
 reg  [7:0] BI;          // ALU Input B
@@ -174,6 +175,7 @@ reg [3:0] alu_op;       // Current cycle ALU operation
 reg adc_bcd;            // ALU should do BCD style carry
 reg adj_bcd;            // results should be BCD adjusted
 reg [1:0]quad_state;    // quad detection state
+reg [1:0]qr_counter;    // quad read counter
 
 `ifdef PRESYNC
 reg presync;            // Instruction can be handled in DECODE state
@@ -297,12 +299,15 @@ parameter
     READW0 = 6'd51, // Setup read MSB for read/modify/write 16 bit
     READW1 = 6'd52, // Read MSB for read/modify/write 16 bit
     WRITEW = 6'd53, // Write MSB for read/modify/write 16 bit
-    READQ0 = 6'd54, // First extra operation during quad read command
-    READQ1 = 6'd55, // Extra second operation during quad read command
-    READQ2 = 6'd56, // Extra third operation during quad read command
-    REGQ0  = 6'd57, // First extra operation during quad register command
-    REGQ1  = 6'd58, // Second extra operation during quad register command
-    REGQ2  = 6'd59; // Third extra operation during quad register command
+    READ1  = 6'd54, // First extra operation during quad read command
+    READ2  = 6'd55, // Extra second operation during quad read command
+    READ3  = 6'd56, // Extra third operation during quad read command
+    REG1   = 6'd57, // First extra operation during quad register command
+    REG2   = 6'd58, // Second extra operation during quad register command
+    REG3   = 6'd59, // Third extra operation during quad register command
+    READQ0 = 6'd60, // Setup read MSB for read/modify/write 16 bit or quad
+    READQ1 = 6'd61, // Read MSB for read/modify/write 16 bit or quad
+    WRITEQ = 6'd62; // Write MSB for read/modify/write 16 bit or quad
 
 `ifdef SIM
 /*
@@ -368,12 +373,15 @@ always @*
             READW0: statename = "READW0";
             READW1: statename = "READW1";
             WRITEW: statename = "WRITEW";
+            READ1:  statename = "READ1";
+            READ2:  statename = "READ2";
+            READ3:  statename = "READ3";
+            REG1:   statename = "REG1";
+            REG2:   statename = "REG2";
+            REG3:   statename = "REG3";
             READQ0: statename = "READQ0";
             READQ1: statename = "READQ1";
-            READQ2: statename = "READQ2";
-            REGQ0:  statename = "REGQ0";
-            REGQ1:  statename = "REGQ1";
-            REGQ2:  statename = "REGQ2";
+            WRITEQ: statename = "WRITEQ";
     endcase
 `endif
 
@@ -531,14 +539,16 @@ always @(posedge clk)
 always @*
     casez( state )
         INDX3,
-        JMP1,
-        ABS1:           AB = { DIMUX, ADD };
+        JMP1:           AB = { DIMUX, ADD };
+
+        ABS1:           AB = { DIMUX, ADD } + ((quad_state == QUADC && shift_right) ? 16'd3 : 16'd0);
 
         JMPI1:          AB = ind_jsr ? PC : { DIMUX, ADD };
 
         INDY2,
-        JMPIX1,
-        ABSX1:          AB = { DIMUX + { 7'd0, CO }, ADD };
+        JMPIX1:         AB = { DIMUX + { 7'd0, CO }, ADD };
+
+        ABSX1:          AB = { DIMUX + { 7'd0, CO }, ADD } + ((quad_state == QUADC && shift_right) ? 16'd3 : 16'd0);
 
         BRA1:           AB = long_branch ? { ADD, ADL } : { ADH + { 7'd0, (CO & ~backwards) } - { 7'd0, (backwards & ~CO) }, ADD };
 
@@ -561,10 +571,11 @@ always @*
         INDX1,
         INDX2:          AB = { AXYZB[SEL_B], ADD };
 
-        BP0,
+        BP0:            AB = { AXYZB[SEL_B], DIMUX } + ((quad_state == QUADC && shift_right) ? 16'd3 : 16'd0);
+
         INDY0:          AB = { AXYZB[SEL_B], DIMUX };
 
-        BPX0:           AB = { AXYZB[SEL_B], DIMUX + AXYZB[index_sel] };
+        BPX0:           AB = { AXYZB[SEL_B], DIMUX + AXYZB[index_sel] } + ((quad_state == QUADC && shift_right) ? 16'd3 : 16'd0);
 
         SPIND1:         AB = { SPH + { 7'd0, (E ? 1'b0 : CO) }, ADD };
 
@@ -573,20 +584,24 @@ always @*
 
 `ifndef PRESYNC
         REG,
-        REGQ0,
-        REGQ1,
-        REGQ2,
+        REG1,
+        REG2,
+        REG3,
 `endif
         READ,
         READW1,
-        WRITE,
-        WRITEW:         AB = { ABH, ABL };
-
-        READQ0,
         READQ1,
-        READQ2:         AB = { ABH, ABL } + 16'd1;
+        WRITE,
+        WRITEW,
+        WRITEQ:         AB = { ABH, ABL };
+
+        READ1,
+        READ2,
+        READ3:          AB = { ABH, ABL } + 16'd1;
 
         READW0:         AB = word_abs ? { ABH, ABL } + 16'd1 : { ABH, ABL + 8'd1 };
+
+        READQ0:         AB = { ABH, ABL } + ((quad_state == QUADC && shift_right) ? -16'd1 : 16'd1);
 
         default:        AB = PC;
     endcase
@@ -623,6 +638,7 @@ always @*
     casez( state )
         WRITE,
         WRITEW,
+        WRITEQ,
         PUSHW2:  DO = ADD;
 
         JSR1,
@@ -637,11 +653,11 @@ always @*
 
         BRK2:    DO = (~IRQ_n | NMI_edge) ? (P & 8'b1110_1111) : P;
 
-        READQ0:  DO = AXYZB[SEL_X];
+        READ1:   DO = AXYZB[SEL_X];
 
-        READQ1:  DO = AXYZB[SEL_Y];
+        READ2:   DO = AXYZB[SEL_Y];
 
-        READQ2:  DO = AXYZB[SEL_Z];
+        READ3:   DO = AXYZB[SEL_Z];
 
         default: DO = regfile;
     endcase
@@ -661,11 +677,12 @@ always @*
         PUSHW1,
         PUSHW2,
         WRITE,
-        WRITEW:  WE_n = 0;
+        WRITEW,
+        WRITEQ:  WE_n = 0;
 
-        READQ0,
-        READQ1,
-        READQ2,
+        READ1,
+        READ2,
+        READ3,
         INDX3,  // only if doing a STA, STX or STY
         INDY2,
         ABSX1,
@@ -712,11 +729,11 @@ always @*
 
         FETCH:  write_register = quad_state == QUADC ? load_reg : 0;
 
-        REGQ0,
-        REGQ1,
-        REGQ2,
-        READQ1,
-        READQ2: write_register = load_reg;
+        REG1,
+        REG2,
+        REG3,
+        READ2,
+        READ3:  write_register = load_reg;
 
        default: write_register = 0;
     endcase
@@ -797,11 +814,11 @@ always @*
 
         FETCH  : regsel = quad_state == QUADC ? dst_reg : src_reg;
 
-        REGQ0,
-        REGQ1,
-        REGQ2,
-        READQ1,
-        READQ2,
+        REG1,
+        REG2,
+        REG3,
+        READ2,
+        READ3,
         DECODE : regsel = dst_reg;
 
         default: regsel = src_reg;
@@ -837,14 +854,15 @@ always @*
         casez( state )
             READ,
             READW1,
-            READQ0,
             READQ1,
-            READQ2,
+            READ1,
+            READ2,
+            READ3,
 `ifndef PRESYNC
             REG,
-            REGQ0,
-            REGQ1,
-            REGQ2,
+            REG1,
+            REG2,
+            REG3,
 `endif
             FETCH : alu_op = op;
 
@@ -865,7 +883,7 @@ always @*
         { alu_shift_right, alu_arith_shift } = { pre_shift_right, pre_arith_shift };
     else if( state == FETCH || state == READ )
 `else
-         if( state == FETCH || state == READ || state == REG || state == READQ0 || state == READQ1 || state == READQ2 || state == REGQ0 || state == REGQ1 || state == REGQ2 )
+         if( state == FETCH || state == READ || state == READQ1 || state == REG || state == REG1 || state == REG2 || state == REG3 )
 `endif
             { alu_shift_right, alu_arith_shift } = { shift_right, arith_shift };
         else
@@ -892,11 +910,11 @@ always @*
 `ifndef PRESYNC
             REG:    AI = neg ? 8'h00 : shift_right && quad_state == QUADC ? AXYZB[SEL_Z] : regfile;
 
-            REGQ0:  AI = neg ? 8'h00 : shift_right ? AXYZB[SEL_Y] : AXYZB[SEL_X];
+            REG1:   AI = neg ? 8'h00 : shift_right ? AXYZB[SEL_Y] : AXYZB[SEL_X];
 
-            REGQ1:  AI = neg ? 8'h00 : shift_right ? AXYZB[SEL_X] : AXYZB[SEL_Y];
+            REG2:   AI = neg ? 8'h00 : shift_right ? AXYZB[SEL_X] : AXYZB[SEL_Y];
 
-            REGQ2:  AI = neg ? 8'h00 : shift_right ? AXYZB[SEL_A] : AXYZB[SEL_Z];
+            REG3:   AI = neg ? 8'h00 : shift_right ? AXYZB[SEL_A] : AXYZB[SEL_Z];
 `endif
 
             INDX0,
@@ -907,7 +925,8 @@ always @*
             INDY1:  AI = quad_state == QUADC ? 0 : regfile;
 
             READ,
-            READW1: AI = DIMUX;
+            READW1,
+            READQ1: AI = DIMUX;
 
             BRA0:   AI = PCL;
 
@@ -920,11 +939,11 @@ always @*
             RTS2,
             SPIND0: AI = SPL;
 
-            READQ0: AI = load_only ? 0 : AXYZB[SEL_A];
+            READ1:  AI = load_only ? 0 : AXYZB[SEL_A];
 
-            READQ1: AI = load_only ? 0 : AXYZB[SEL_X];
+            READ2:  AI = load_only ? 0 : AXYZB[SEL_X];
 
-            READQ2: AI = load_only ? 0 : AXYZB[SEL_Y];
+            READ3:  AI = load_only ? 0 : AXYZB[SEL_Y];
 
             FETCH:  AI = load_only ? 0 : quad_state == QUADC ? AXYZB[SEL_Z] : regfile;
 
@@ -952,16 +971,17 @@ always @*
 `ifndef PRESYNC
             REG:    BI = neg ? regfile : 8'h00;
 
-            REGQ0:  BI = neg ? AXYZB[SEL_X] : 8'h00;
+            REG1:   BI = neg ? AXYZB[SEL_X] : 8'h00;
 
-            REGQ1:  BI = neg ? AXYZB[SEL_Y] : 8'h00;
+            REG2:   BI = neg ? AXYZB[SEL_Y] : 8'h00;
 
-            REGQ2:  BI = neg ? AXYZB[SEL_Z] : 8'h00;
+            REG3:   BI = neg ? AXYZB[SEL_Z] : 8'h00;
 `endif
 
             READ:   BI = xmb_ins ? (bit_code[3] ? 8'h01 << bit_code[2:0] : ~(8'h01 << bit_code[2:0])) : (txb_ins ? (trb_ins ? ~regfile : regfile) : 8'h00);
 
-            READW1: BI = 0;
+            READW1,
+            READQ1: BI = 0;
 
             DECODE,
             ABS1:   BI = 8'hxx;
@@ -980,11 +1000,11 @@ always @*
 `endif
         casez( state )
             BRA0B,
-            READQ1,
-            READQ2,
-            REGQ0,
-            REGQ1,
-            REGQ2,
+            READ2,
+            READ3,
+            REG1,
+            REG2,
+            REG3,
             INDY2,
             JMPIX1,
             ABSX1:  CI = CO;
@@ -1000,7 +1020,7 @@ always @*
             READ:   CI = rotate ? C :
                         shift ? 0 : inc;
 
-            READQ0: CI = rotate ? C :
+            READ1:  CI = rotate ? C :
                         compare ? 1 :
                         (shift | load_only) ? 0 : C;
 
@@ -1012,7 +1032,8 @@ always @*
             INDY0,
             INDX1:  CI = 1;
 
-            READW1: CI = DLDC;
+            READW1,
+            READQ1: CI = DLDC;
 
             default:        CI = 0;
         endcase
@@ -1027,7 +1048,7 @@ always @*
  * Update C flag when doing ADC/SBC, shift/rotate, compare
  */
 always @(posedge clk )
-    if( shift && ((state == WRITE && ~word) || state == WRITEW) )
+    if( shift && ((state == WRITE && ~word && quad_state != QUADC) || (state == WRITEW) || (state == WRITEQ && qr_counter == 2'd3)) )
         C <= CO;
     else if( state == RTI1 )
         C <= DIMUX[0];
@@ -1043,12 +1064,20 @@ always @(posedge clk )
     end
 
 /*
- * Store delayed C flag for 16 bit operations
+ * Store delayed C flag for 16 bit and 32 bit operations
  */
 
 always @(posedge clk )
-    if( word && state == WRITE )
+    if( state == WRITE || state == WRITEQ )
         DLDC <= CO;
+
+/*
+ * Store delayed N flag for right shift 32 bit operations
+ */
+
+always @(posedge clk )
+    if( state == REG || state == WRITE )
+        DLDN <= AN1;
 
 /*
  * Special Z flag got TRB/TSB
@@ -1062,18 +1091,24 @@ always @(posedge clk)
 
 always @(posedge clk)
     if( state == WRITE && ~xmb_ins ) begin
-        if( word )
+        if( word || quad_state == QUADC )
             DLDZ <= AZ1;
         else
             Z <= txb_ins ? AZ2 : AZ1;
     end
     else if( state == WRITEW )
         Z <= AZ1 & DLDZ;
+    else if( state == WRITEQ ) begin
+        if( qr_counter < 2'd3 )
+            DLDZ <= AZ1 & DLDZ;
+        else
+            Z <= AZ1 & DLDZ;
+    end
     else if( state == RTI1 )
         Z <= DIMUX[1];
-    else if( state == READQ1 )
+    else if( state == READ2 )
         DLDZ <= AZ1;
-    else if( state == READQ2 )
+    else if( state == READ3 )
         DLDZ <= AZ1 & DLDZ;
     else if( state == FETCH && quad_state == QUADC )
         DLDZ <= AZ1 & DLDZ;
@@ -1085,16 +1120,23 @@ always @(posedge clk)
     end
 
 always @(posedge clk)
-    if( ((state == WRITE && ~word) || state == WRITEW) && ~txb_ins && ~xmb_ins )
+    if( ((state == WRITE && ~word && quad_state != QUADC) || (state == WRITEW) || (state == WRITEQ && qr_counter == 2'd3)) && ~txb_ins && ~xmb_ins )
         N <= AN1;
+    else if ( state == WRITEQ && qr_counter == 2'd3 && shift_right )
+        N <= DLDN;
     else if( state == RTI1 )
         N <= DIMUX[7];
     else if( state == DECODE ) begin
         if( plp )
             N <= ADD[7];
-        else if( (load_reg & ((regsel != SEL_SPL) & (regsel != SEL_SPH))) | compare )
-            N <= AN1;
-    end else if( state == FETCH && bit_ins_nv )
+        else if( (load_reg & ((regsel != SEL_SPL) & (regsel != SEL_SPH))) | compare ) begin
+            if ( quad_state == QUADC && shift_right )
+                N <= DLDN;
+            else
+                N <= AN1;
+        end
+    end
+    else if( state == FETCH && bit_ins_nv )
         N <= DIMUX[7];
 
 /*
@@ -1256,12 +1298,12 @@ always @(posedge clk or negedge reset_n)
             endcase
             /* verilator lint_on CASEOVERLAP */
 
-        BP0     : state <= bbx_ins ? RDONLY : write_back ? READ : quad_state == QUADC ? READQ0 : FETCH;
+        BP0     : state <= bbx_ins ? RDONLY : write_back ? READ : quad_state == QUADC ? READ1 : FETCH;
 
         BPX0    : state <= write_back ? READ : FETCH;
 
         ABS0    : state <= ABS1;
-        ABS1    : state <= phw ? PHWRD0 : write_back ? READ : quad_state == QUADC ? READQ0 : FETCH;
+        ABS1    : state <= phw ? PHWRD0 : write_back ? READ : quad_state == QUADC ? READ1 : FETCH;
 
         ABSX0   : state <= ABSX1;
         ABSX1   : state <= write_back ? READ : FETCH;
@@ -1276,25 +1318,29 @@ always @(posedge clk or negedge reset_n)
 
         INDY0   : state <= INDY1;
         INDY1   : state <= INDY2;
-        INDY2   : state <= quad_state == QUADC ? READQ0 : FETCH;
+        INDY2   : state <= quad_state == QUADC ? READ1 : FETCH;
 
         SPIND0  : state <= SPIND1;
         SPIND1  : state <= SPIND2;
         SPIND2  : state <= INDY2;
 
         READ    : state <= WRITE;
-        WRITE   : state <= word ? READW0 : FETCH;
+        WRITE   : state <= word ? READW0 : quad_state == QUADC ? READQ0 : FETCH;
         FETCH   : state <= DECODE;
 
         READW0  : state <= READW1;
         READW1  : state <= WRITEW;
         WRITEW  : state <= FETCH;
 
+        READQ0  : state <= READQ1;
+        READQ1  : state <= WRITEQ;
+        WRITEQ  : state <= qr_counter < 2'd3 ? READQ0 : FETCH;
+
 `ifndef PRESYNC
-        REG     : state <= quad_state == QUADC ? REGQ0 : DECODE;
-        REGQ0   : state <= REGQ1;
-        REGQ1   : state <= REGQ2;
-        REGQ2   : state <= DECODE;
+        REG     : state <= quad_state == QUADC ? REG1 : DECODE;
+        REG1    : state <= REG2;
+        REG2    : state <= REG3;
+        REG3    : state <= DECODE;
 `endif
 
         RDONLY  : state <= bbx_ins ? BRA0 : FETCH;
@@ -1332,9 +1378,9 @@ always @(posedge clk or negedge reset_n)
         JMPI0   : state <= JMPI1;
         JMPI1   : state <= JMP0;
 
-        READQ0  : state <= READQ1;
-        READQ1  : state <= READQ2;
-        READQ2  : state <= FETCH;
+        READ1   : state <= READ2;
+        READ2   : state <= READ3;
+        READ3   : state <= FETCH;
 
         BRK0    : state <= BRK1;
         BRK1    : state <= BRK2;
@@ -1348,6 +1394,13 @@ always @(posedge clk or negedge reset_n)
 /*
  * Additional control signals
  */
+
+always @(posedge clk)
+    if( state == DECODE )
+        qr_counter <= 2'd0;
+    else if( state == READQ0 )
+        qr_counter <= qr_counter + 2'd1;
+
 
 always @(posedge clk)
     if( ~reset_n )
@@ -1425,9 +1478,9 @@ always @(posedge clk)
             endcase
         else if ( quad_state == QUADC ) begin
             if ( state == REG ) dst_reg <= shift_right ? SEL_Z : SEL_A;
-            else if ( state == READQ1 || state == REGQ0 ) dst_reg <= shift_right ? SEL_Y : SEL_X;
-            else if ( state == READQ2 || state == REGQ1 ) dst_reg <= shift_right ? SEL_X : SEL_Y;
-            else if ( state == FETCH || state == REGQ2 )  dst_reg <= shift_right ? SEL_A : SEL_Z;
+            else if ( state == READ2 || state == REG1 ) dst_reg <= shift_right ? SEL_Y : SEL_X;
+            else if ( state == READ3 || state == REG2 ) dst_reg <= shift_right ? SEL_X : SEL_Y;
+            else if ( state == FETCH || state == REG3 )  dst_reg <= shift_right ? SEL_A : SEL_Z;
         end
 
 
