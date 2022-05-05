@@ -17,7 +17,7 @@ all: $(TOP).lxt
 
 $(TOP).lxt: $(TOP)
 	cp ../cc65/rom.hex .
-	./$(TOP) -lxt2-space
+	./$(TOP) -lxt
 
 $(TOP): tb_soc_6502.v $(SOURCES)
 	$(VLOG) -D icarus -D SIM -o $(TOP) tb_soc_6502.v $(SOURCES)
