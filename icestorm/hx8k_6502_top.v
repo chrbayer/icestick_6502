@@ -31,20 +31,31 @@ module hx8k_6502_top(
 	end
 
 	// test unit
-	wire [7:0] gpio_o, gpio_i;
-	assign gpio_i[7:2] = 6'h00;
+	wire [7:0] gpio_a_i, gpio_a_o;
+	wire [7:0] gpio_b_i, gpio_b_o;
+	wire pc_n, sp_out, cnt_out;
+	assign gpio_b_i[7:2] = 6'h00;
 	soc_6502 u6502(
 		.clk(CLK1),
 		.reset_n(reset_n),
 
-		.gpio_o(gpio_o),
-		.gpio_i(gpio_i),
-
 		.RX(RX),
-		.TX(TX)
+		.TX(TX),
+
+		.gpio_a_i(gpio_a_i),
+		.gpio_a_o(gpio_a_o),
+		.gpio_b_i(gpio_b_i),
+		.gpio_b_o(gpio_b_o),
+
+		.flag_n(1'b1),
+		.pc_n(pc_n),
+		.sp_in(1'b0),
+		.sp_out(sp_out),
+		.cnt_in(1'b0),
+		.cnt_out(cnt_out)
 	);
 
 	// drive LEDs from GPIO
-	assign {LED1,LED2} = gpio_o[7:6];
-	assign gpio_i[1:0] = {BUT1,BUT2};
+	assign {LED1,LED2} = gpio_b_o[7:6];
+	assign gpio_b_i[1:0] = {BUT1,BUT2};
 endmodule

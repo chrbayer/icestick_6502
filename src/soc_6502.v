@@ -5,11 +5,23 @@ module soc_6502(
     input clk,              // SOC System clock
     input reset_n,          // Low-true reset
 
-	output wire [7:0] gpio_o,
-	input [7:0] gpio_i,
-
 	input RX,				// serial RX
-	output TX				// serial TX
+	output TX,				// serial TX
+
+	input [7:0] gpio_a_i,
+	output wire [7:0] gpio_a_o,
+
+	input [7:0] gpio_b_i,
+	output wire [7:0] gpio_b_o,
+
+	input flag_n,
+	output wire pc_n,
+
+	input sp_in,
+	output wire sp_out,
+
+	input cnt_in,
+	output wire cnt_out
 );
 
 	// Peripheral clock
@@ -89,12 +101,16 @@ module soc_6502(
 		.rs(CPU_AB[3:0]),
 		.db_in(CPU_DO),
 		.db_out(cia_do),
-		.pa_in(gpio_i),
-		.pb_in(gpio_i),
-		.pb_out(gpio_o),
-		.flag_n(1'b1),
-		.sp_in(1'b0),
-		.cnt_in(1'b0),
+		.pa_in(gpio_a_i),
+		.pa_out(gpio_a_o),
+		.pb_in(gpio_b_i),
+		.pb_out(gpio_b_o),
+		.flag_n(flag_n),
+		.pc_n(pc_n),
+		.sp_in(sp_in),
+		.sp_out(sp_out),
+		.cnt_in(cnt_in),
+		.cnt_out(cnt_out),
 		.irq_n(cia_irq_n)
 	);
 

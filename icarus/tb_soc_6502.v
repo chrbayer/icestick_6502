@@ -6,8 +6,18 @@
 module tb_soc_6502;
     reg clk;
     reg reset_n;
-	wire [7:0] gpio_o;
-	reg [7:0] gpio_i;
+    reg RX;
+    wire TX;
+	reg [7:0] gpio_a_i;
+	wire [7:0] gpio_a_o;
+	reg [7:0] gpio_b_i;
+	wire [7:0] gpio_b_o;
+	reg flag_n;
+	wire pc_n;
+	reg sp_in;
+	wire sp_out;
+	reg cnt_in;
+	wire cnt_out;
 
     // clock source
     always
@@ -51,7 +61,17 @@ module tb_soc_6502;
     soc_6502 uut(
         .clk(clk),              // clock
         .reset_n(reset_n),      // Low-true reset
-        .gpio_o(gpio_o),        // gpio output
-        .gpio_i(gpio_i)         // gpio input
+        .RX(RX),                // UART RX
+        .TX(TX),                // UART TX
+        .gpio_a_i(gpio_a_i),    // gpio a input
+        .gpio_a_o(gpio_a_o),    // gpio a output
+        .gpio_b_i(gpio_b_i),    // gpio b input
+        .gpio_b_o(gpio_b_o),    // gpio b output
+        .flag_n(flag_n),        // low-true FLAG
+	    .pc_n(pc_n),            // low-true PC
+	    .sp_in(sp_in),          // Serial Port in
+        .sp_out(sp_out),        // Serual Port out
+        .cnt_in(cnt_in),        // CNT in
+        .cnt_out(cnt_out)       // CNT out
     );
 endmodule
