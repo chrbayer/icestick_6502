@@ -1,4 +1,5 @@
 .history/
+.vscode/
 workspace.code-workspace
 cc65/rom
 cc65/rom.hex

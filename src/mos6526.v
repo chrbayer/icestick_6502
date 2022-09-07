@@ -83,8 +83,11 @@ reg        int_reset;
 wire       rd = ~cs_n & rw;
 wire       wr = ~cs_n & ~rw;
 
+// default peripheral clock 4MHz
+parameter clk_freq = 4000000;
+
 // generate 50 Hz tod clock
-localparam tod_cnt = 4000000 / 50;
+localparam tod_cnt = clk_freq / 50;
 localparam TDW = $clog2(tod_cnt);
 
 reg tod;

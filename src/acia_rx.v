@@ -10,7 +10,7 @@ module acia_rx(
 	output reg rx_stb,        // received data available
 	output reg rx_err         // received data error
 );
-	// sym rate counter for 9600bps @ 4MHz clk
+	// default sym rate counter for 9600bps @ 4MHz clk
     parameter SCW = 9;
 	parameter sym_cnt = 417;
 

@@ -92,7 +92,10 @@ module soc_6502(
 	// CIA @ page 10-1f
 	wire [7:0] cia_do;
 	wire cia_irq_n;
-	mos6526 umos6526(
+	mos6526 #(
+		.clk_freq(periph_freq)
+	)
+	umos6526(
 		.clk(clk),
 		.phi2(pclk), // peripheral clock
 		.reset_n(reset_n),
@@ -117,7 +120,10 @@ module soc_6502(
 	// ACIA at page 20-2f
 	wire [7:0] acia_do;
 	wire acia_irq_n;
-	acia uacia(
+	acia #(
+		.clk_freq(periph_freq)
+	)
+	uacia(
 		.clk(clk),						// system clock
 		.pclk(pclk),					// peripheral clock
 		.reset_n(reset_n),				// system reset

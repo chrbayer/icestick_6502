@@ -14,9 +14,12 @@ module acia(
 	output tx,				// serial tx_start
 	output irq_n			// low-true interrupt request
 );
+
+	// default system clock 4MHz
+    parameter clk_freq = 4000000;
+
 	// hard-coded bit-rate
 	localparam sym_rate = 9600;
-    localparam clk_freq = 4000000;
     localparam sym_cnt = clk_freq / sym_rate;
 	localparam SCW = $clog2(sym_cnt);
 
