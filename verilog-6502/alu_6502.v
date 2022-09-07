@@ -17,28 +17,22 @@
  *
  */
 
-module alu_6502( clk, op, right, AI, BI, CI, CO, BCD, OUT, V, Z, N, HC, RDY );
-	input clk;
-	input right;
-	input [3:0] op;		// operation
-	input [7:0] AI;
-	input [7:0] BI;
-	input CI;
-	input BCD;		// BCD style carry
-	output [7:0] OUT;
-	output CO;
-	output V;
-	output Z;
-	output N;
-	output HC;
-	input RDY;
-
-reg [7:0] OUT;
-reg CO;
-wire V;
-wire Z;
-reg N;
-reg HC;
+module alu_6502 (
+	input clk,
+	input right,
+	input [3:0] op,		// operation
+	input [7:0] AI,
+	input [7:0] BI,
+	input CI,
+	input BCD,		// BCD style carry
+	output reg [7:0] OUT,
+	output reg CO,
+	output V,
+	output Z,
+	output N,
+	output reg HC,
+	input RDY
+);
 
 reg AI7;
 reg BI7;

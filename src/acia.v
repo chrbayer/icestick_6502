@@ -128,7 +128,7 @@ module acia(
 		.SCW(SCW),				// rate counter width
 		.sym_cnt(sym_cnt)		// rate count value
 	)
-	my_rx(
+	my_rx (
 		.clk(clk),				// system clock
 		.pclk(pclk),			// peripheral clock
 		.reset_n(acia_rst_n), 	// system reset
@@ -143,7 +143,7 @@ module acia(
 		.SCW(SCW),              // rate counter width
 		.sym_cnt(sym_cnt)       // rate count value
 	)
-	my_tx(
+	my_tx (
 		.clk(clk),				// system clock
 		.pclk(pclk),			// peripheral clock
 		.reset_n(acia_rst_n),	// system reset

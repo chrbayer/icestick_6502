@@ -48,17 +48,17 @@
 
 `define IMPLEMENT_CORRECT_BCD_FLAGS
 
-module cpu_65c02( clk, reset_n, AB, DI, DO, WE_n, IRQ_n, NMI_n, RDY );
-
-input clk;              // CPU clock
-input reset_n;          // reset signal
-output reg [15:0] AB;   // address bus
-input [7:0] DI;         // data in, read bus
-output [7:0] DO;        // data out, write bus
-output WE_n;            // write enable
-input IRQ_n;            // interrupt request
-input NMI_n;            // non-maskable interrupt request
-input RDY;              // Ready signal. Pauses CPU when RDY=0
+module cpu_65c02 (
+    input clk,              // CPU clock
+    input reset_n,          // reset signal
+    output reg [15:0] AB,   // address bus
+    input [7:0] DI,         // data in, read bus
+    output reg [7:0] DO,    // data out, write bus
+    output reg WE_n,        // write enable
+    input IRQ_n,            // interrupt request
+    input NMI_n,            // non-maskable interrupt request
+    input RDY               // Ready signal. Pauses CPU when RDY=0
+);
 
 /*
  * internal signals
@@ -94,11 +94,8 @@ wire HC;                // ALU half carry
 
 reg  [7:0] AI;          // ALU Input A
 reg  [7:0] BI;          // ALU Input B
-wire [7:0] DI;          // Data In
 wire [7:0] IR;          // Instruction register
-reg  [7:0] DO;          // Data Out
 wire [7:0] AO;          // ALU output after BCD adjustment
-reg  WE_n;              // Write Enable
 reg  CI;                // Carry In
 wire CO;                // Carry Out
 wire [7:0] PCH = PC[15:8];
@@ -644,7 +641,8 @@ always @*
  * ALU
  */
 
-alu_6502 ualu( .clk(clk),
+alu_6502 ualu (
+         .clk(clk),
          .op(alu_op),
          .right(alu_shift_right),
          .AI(AI),
@@ -657,7 +655,8 @@ alu_6502 ualu( .clk(clk),
          .Z(AZ),
          .N(AN),
          .HC(HC),
-         .RDY(RDY) );
+         .RDY(RDY)
+);
 
 /*
  * Select current ALU operation

@@ -61,7 +61,7 @@ module soc_6502(
     reg [7:0] CPU_DI;
     wire [7:0] CPU_DO;
     wire CPU_WE_n, CPU_IRQ_n;
-    cpu_65ce02 ucpu(
+    cpu_65ce02 ucpu (
         .clk(clk),
         .reset_n(reset_n),
         .AB(CPU_AB),
@@ -98,7 +98,7 @@ module soc_6502(
 	mos6526 #(
 		.clk_freq(periph_freq)
 	)
-	umos6526(
+	umos6526 (
 		.clk(clk),
 		.phi2(pclk), // peripheral clock
 		.reset_n(reset_n),
@@ -126,7 +126,7 @@ module soc_6502(
 	acia #(
 		.clk_freq(periph_freq)
 	)
-	uacia(
+	uacia (
 		.clk(clk),						// system clock
 		.pclk(pclk),					// peripheral clock
 		.reset_n(reset_n),				// system reset

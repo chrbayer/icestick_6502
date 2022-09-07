@@ -17,27 +17,23 @@
  *
  */
 
-module alu_65ce02( clk, op, right, arith, AI, BI, CI, CO, BCD, OUT, V, HC, RDY );
-	input clk;
-	input right;
-	input arith;
-	input [3:0] op;		// operation
-	input [7:0] AI;
-	input [7:0] BI;
-	input CI;
-	input BCD;		// BCD style carry
-	output [7:0] OUT;
-	output CO;
-	output V;
-	output HC;
-	input RDY;
+module alu_65ce02 (
+	input clk,
+	input right,
+	input arith,
+	input [3:0] op,		// operation
+	input [7:0] AI,
+	input [7:0] BI,
+	input CI,
+	input BCD,		// BCD style carry
+	output reg [7:0] OUT,
+	output reg CO,
+	output V,
+	output reg HC,
+	input RDY
+);
 
-reg [7:0] OUT;
-reg CO;
-wire V;
 reg N;
-reg HC;
-
 reg AI7;
 reg BI7;
 reg [8:0] temp_logic;

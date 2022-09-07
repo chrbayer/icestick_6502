@@ -1,7 +1,11 @@
 // acia_tx.v - serial transmit submodule
 // 06-02-19 E. Brombaugh
 
-module acia_tx(
+module acia_tx #(
+	// default sym rate counter for 9600bps @ 4MHz clk
+    parameter SCW = 9,
+	parameter sym_cnt = 417
+) (
 	input clk,				// system clock
 	input pclk,				// peripheral clock
 	input reset_n,			// system reset
@@ -10,9 +14,6 @@ module acia_tx(
 	output tx_serial,		// tx serial output
 	output reg tx_busy		// tx is active (not ready)
 );
-	// default sym rate counter for 9600bps @ 4MHz clk
-    parameter SCW = 9;
-	parameter sym_cnt = 417;
 
 	// transmit machine
 	reg [8:0] tx_sr;

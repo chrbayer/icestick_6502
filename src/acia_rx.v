@@ -1,7 +1,11 @@
 // acia_rx.v - asynchronous serial receive submodule
 // 06-02-19 E. Brombaugh
 
-module acia_rx(
+module acia_rx #(
+	// default sym rate counter for 9600bps @ 4MHz clk
+    parameter SCW = 9,
+	parameter sym_cnt = 417
+) (
 	input clk,				  // system clock
 	input pclk,				  // peripheral clock
 	input reset_n,			  // system reset
@@ -10,9 +14,6 @@ module acia_rx(
 	output reg rx_stb,        // received data available
 	output reg rx_err         // received data error
 );
-	// default sym rate counter for 9600bps @ 4MHz clk
-    parameter SCW = 9;
-	parameter sym_cnt = 417;
 
 	// input sync & deglitch
 	reg [7:0] in_pipe;

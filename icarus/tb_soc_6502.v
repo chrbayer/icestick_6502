@@ -58,7 +58,7 @@ module tb_soc_6502;
     end
 
     // Unit under test
-    soc_6502 uut(
+    soc_6502 uut (
         .clk(clk),              // clock
         .reset_n(reset_n),      // Low-true reset
         .IRQ_n(1'b1),           // no interrupt

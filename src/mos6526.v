@@ -4,7 +4,10 @@
 // Passes all Lorenz CIA Timer tests
 // Passes all CIA tests from VICE, except dd0dtest
 
-module mos6526 (
+module mos6526 #(
+  // default peripheral clock 4MHz
+  parameter clk_freq = 4000000
+) (
   input  wire       clk,
   input  wire       phi2, // Phi 2 positive edge
   input  wire       reset_n,
@@ -82,9 +85,6 @@ reg        int_reset;
 
 wire       rd = ~cs_n & rw;
 wire       wr = ~cs_n & ~rw;
-
-// default peripheral clock 4MHz
-parameter clk_freq = 4000000;
 
 // generate 50 Hz tod clock
 localparam tod_cnt = clk_freq / 50;
