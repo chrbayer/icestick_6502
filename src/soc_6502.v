@@ -28,8 +28,8 @@ module soc_6502(
 );
 
 	// Peripheral clock
-    localparam clk_freq    = 40000000;
-    localparam periph_freq = 4000000;
+    localparam clk_freq    = 35000000;
+    localparam periph_freq = 3500000;
     localparam pclk_cnt = (clk_freq / periph_freq);
 	localparam PCW = $clog2(pclk_cnt);
 
