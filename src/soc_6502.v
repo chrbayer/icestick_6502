@@ -5,6 +5,9 @@ module soc_6502(
     input clk,              // SOC System clock
     input reset_n,          // Low-true reset
 
+	input IRQ_n,
+	input NMI_n,
+
 	input RX,				// serial RX
 	output TX,				// serial TX
 
@@ -66,7 +69,7 @@ module soc_6502(
         .DO(CPU_DO),
         .WE_n(CPU_WE_n),
         .IRQ_n(CPU_IRQ_n),
-        .NMI_n(1'b1),
+        .NMI_n(NMI_n),
         .RDY(1'b1)
     );
 
@@ -137,7 +140,7 @@ module soc_6502(
 		.irq_n(acia_irq_n)				// interrupt request
 	);
 
-	assign CPU_IRQ_n = cia_irq_n & acia_irq_n;
+	assign CPU_IRQ_n = IRQ_n & cia_irq_n & acia_irq_n;
 
 	// ROM @ pages f0,f1...
 	reg [7:0] rom_do;

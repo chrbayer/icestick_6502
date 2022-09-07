@@ -39,6 +39,9 @@ module hx8k_6502_top(
 		.clk(CLK1),
 		.reset_n(reset_n),
 
+		.IRQ_n(1'b1),
+		.NMI_n(1'b1),
+
 		.RX(RX),
 		.TX(TX),
 

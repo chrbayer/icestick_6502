@@ -29,6 +29,10 @@ int main(int argc, char**argv) {
     //  Instantiate  our  design
     Vsoc_6502 *tb = new Vsoc_6502;
 
+    // Make sure that no interrupts are triggered
+    tb->IRQ_n = 1;
+    tb->NMI_n = 1;
+
     int test_case = -1;
 
     for(int k = 0; k < (1<<27); k++) {

@@ -61,6 +61,8 @@ module tb_soc_6502;
     soc_6502 uut(
         .clk(clk),              // clock
         .reset_n(reset_n),      // Low-true reset
+        .IRQ_n(1'b1),           // no interrupt
+        .NMI_n(1'b1),           // no NMI
         .RX(RX),                // UART RX
         .TX(TX),                // UART TX
         .gpio_a_i(gpio_a_i),    // gpio a input
