@@ -1,4 +1,4 @@
-module hx8k_6502_top(
+module hx8k_65xx_top(
 	input  RX,
 	output TX,
 	input  clk,
@@ -35,7 +35,7 @@ module hx8k_6502_top(
 	wire [7:0] gpio_b_i, gpio_b_o;
 	wire pc_n, sp_out, cnt_out;
 	assign gpio_b_i[7:2] = 6'h00;
-	soc_6502 u6502 (
+	soc_65xx u6502 (
 		.clk(CLK1),
 		.reset_n(reset_n),
 

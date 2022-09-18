@@ -1,7 +1,7 @@
 // tst_6502.v - test 6502 core
 // 02-11-19 E. Brombaugh
 
-module soc_6502(
+module soc_65xx(
     input clk,              // SOC System clock
     input reset_n,          // Low-true reset
 
@@ -56,12 +56,22 @@ module soc_6502(
 	end
 
 
-    // The 6502
+    // The 65xx
     wire [15:0] CPU_AB;
     reg [7:0] CPU_DI;
     wire [7:0] CPU_DO;
     wire CPU_WE_n, CPU_IRQ_n;
+`ifdef CPU_6502
+    cpu_6502 ucpu (
+`elsif CPU_65C02
+    cpu_65c02 ucpu (
+`elsif CPU_65CE02
+    cpu_65ce02 ucpu (
+`elsif CPU_45GS02
     cpu_45gs02 ucpu (
+`else
+    cpu_45gs02 ucpu (
+`endif
         .clk(clk),
         .reset_n(reset_n),
         .AB(CPU_AB),

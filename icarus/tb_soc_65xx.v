@@ -3,7 +3,7 @@
 
 //`timescale 1ns/1ps
 
-module tb_soc_6502;
+module tb_soc_65xx;
     reg clk;
     reg reset_n;
     reg RX;
@@ -27,7 +27,18 @@ module tb_soc_6502;
     initial
     begin
 `ifndef VERIFICATION
+`ifdef CPU_6502
   		$dumpfile("tb_soc_6502.lxt");
+`endif
+`ifdef CPU_65C02
+  		$dumpfile("tb_soc_65C02.lxt");
+`endif
+`ifdef CPU_65CE02
+  		$dumpfile("tb_soc_65CE02.lxt");
+`endif
+`ifdef CPU_45GS02
+  		$dumpfile("tb_soc_45GS02.lxt");
+`endif
 		$dumpvars/*(1, uut)*/;
 `endif
 
@@ -58,7 +69,7 @@ module tb_soc_6502;
     end
 
     // Unit under test
-    soc_6502 uut (
+    soc_65xx uut (
         .clk(clk),              // clock
         .reset_n(reset_n),      // Low-true reset
         .IRQ_n(1'b1),           // no interrupt
