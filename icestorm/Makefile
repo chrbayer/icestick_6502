@@ -3,8 +3,8 @@
 # 03-03-19 E. Brombaugh
 # this version builds the CPU code from C
 
-SRC =	hx8k_65xx_top.v pll.v ../src/soc_65xx.v ../src/acia.v \
-		../src/acia_rx.v ../src/acia_tx.v ../src/mos6526.v \
+SRC =	hx8k_65xx_top.v pll.v \
+		../src/acia.v ../src/acia_rx.v ../src/acia_tx.v ../src/mos6526.v \
 		../verilog-6502/alu_65ce02.v ../verilog-6502/cpu_45gs02.v
 
 # preparing the machine code

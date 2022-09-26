@@ -29,6 +29,8 @@ module soc_65xx(
 
 	// Peripheral clock
     localparam clk_freq    = 35000000;
+
+`ifndef VERIFICATION
     localparam periph_freq = 3500000;
     localparam pclk_cnt = (clk_freq / periph_freq);
 	localparam PCW = $clog2(pclk_cnt);
@@ -54,7 +56,7 @@ module soc_65xx(
 			pclk_counter <= pclk_counter + 1;
 		end
 	end
-
+`endif
 
     // The 65xx
     wire [15:0] CPU_AB;
@@ -86,8 +88,6 @@ module soc_65xx(
 	// address decode - not fully decoded for 512-byte memories
 	wire p0 = (CPU_AB[15:12] == 4'h0) ? 0 : 1;
 	wire p1 = (CPU_AB[15:12] == 4'h1) ? 0 : 1;
-	wire p2 = (CPU_AB[15:12] == 4'h2) ? 0 : 1;
-	wire pf = (CPU_AB[15:12] == 4'hf) ? 0 : 1;
 
 	wire [5:0] ios = CPU_AB[11:6];
 
@@ -102,6 +102,7 @@ module soc_65xx(
 	always @(posedge clk)
 		ram_do <= ram_mem[CPU_AB[11:0]];
 
+`ifndef VERIFICATION
 	// CIA @ page 10-1f
 	wire [7:0] cia_do;
 	wire cia_irq_n;
@@ -151,6 +152,9 @@ module soc_65xx(
 	);
 
 	assign CPU_IRQ_n = IRQ_n & cia_irq_n & acia_irq_n;
+`else
+	assign CPU_IRQ_n = IRQ_n;
+`endif
 
 	// ROM @ pages f0,f1...
 	reg [7:0] rom_do;
@@ -206,12 +210,13 @@ module soc_65xx(
 	always @(*)
 		casez(mux_sel)
 			4'h0:    CPU_DI = ram_do;
+`ifndef VERIFICATION
 			4'h1:    casez(sec_sel)
 					     6'h00:   CPU_DI = cia_do;
 						 6'h01:   CPU_DI = acia_do;
 						 default: CPU_DI = rom_do;
 					 endcase
-			4'hf:    CPU_DI = rom_do;
+`endif
 			default: CPU_DI = rom_do;
 		endcase
 endmodule
