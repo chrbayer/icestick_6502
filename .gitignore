@@ -1,6 +1,7 @@
 .history/
 .vscode/
 *.code-workspace
+verilog-6502/~$*
 cc65/rom
 cc65/rom.hex
 cc65/rom.map

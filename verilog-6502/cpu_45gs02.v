@@ -9,7 +9,7 @@
  * keep this message, and the copyright notice. This code is provided "as is",
  * without any warranties of any kind.
  *
- * Support for 45GS02 instructions and addressing modes by David Banks and Ed Spittles
+ * Support for 65C02 instructions and addressing modes by David Banks and Ed Spittles
  *
  * (C) 2016 David Banks and Ed Spittles
  *
@@ -821,8 +821,9 @@ always @*
         default: regsel = src_reg;
     endcase
 
+
 /*
- * ALUs
+ * ALU
  */
 
 alu_65ce02 ualu (
@@ -1418,7 +1419,7 @@ always @(posedge clk)
                 8'b0111_1010,   // PLY
                 8'b0???_??01,   // ORA, AND, EOR, ADC
                 8'b100?_10?0,   // DEY, TYA, TXA, TXS
-                8'b1010_???0,   // LDA/LDX/LDY
+                8'b1010_???0,   // LDA/LDX/LDY/TAX/TAY
                 8'b1010_0011,   // LDZ
                 8'b1011_1010,   // TSX
                 8'b1011_?1?0,   // LDX/LDY

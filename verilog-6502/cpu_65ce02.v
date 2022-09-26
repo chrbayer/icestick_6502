@@ -9,7 +9,7 @@
  * keep this message, and the copyright notice. This code is provided "as is",
  * without any warranties of any kind.
  *
- * Support for 65CE02 instructions and addressing modes by David Banks and Ed Spittles
+ * Support for 65C02 instructions and addressing modes by David Banks and Ed Spittles
  *
  * (C) 2016 David Banks and Ed Spittles
  *
@@ -62,8 +62,8 @@ reg  [7:0] SPL;         // Stack Register LSB
 reg  [7:0] SPH;         // Stack Register MSB
 
 reg  [7:0] DIHOLD;      // Hold for Data In
-reg  DIHOLD_valid;      //
-wire [7:0] DIMUX;       //
+reg  DIHOLD_valid;      // Valid Data In
+wire [7:0] DIMUX;       // DI if ready else DIHOLD
 
 reg  [7:0] IRHOLD;      // Hold for Instruction register
 reg  IRHOLD_valid;      // Valid instruction in IRHOLD
@@ -647,12 +647,13 @@ always @*
 always @*
     if ( state == DECODE )
         casez ( IR )
-            8'b0??1_1000,
-            8'b1???_1000,
-            8'b?0?1_1010,
-            8'b???0_1010,
-            8'b0???_1011,
-            8'b0?00_001?:   presync = 1;
+            8'b0??1_1000,   // CLC/SEC/CLI/SEI
+            8'b1???_1000,   // DEY/TYA/TAY/CLV/INY/CLD/INX/SED
+            8'b?0?1_1010,   // INC A/DEC A/TXS/TSX
+            8'b???0_1010,   // ASL A/ROL A/LSR A/ROR A/TXA/TAX/DEX/NOP
+            8'b0???_1011,   // TSY/INZ/TYS/DEZ/TAZ/TAB/TZA/TBA
+            8'b0?00_001?:   // CLE/SEE/NEG A/ASR A
+                            presync = 1;
 
             default:        presync = 0;
         endcase
@@ -754,7 +755,7 @@ always @*
     endcase
 
 /*
- * ALUs
+ * ALU
  */
 
 alu_65ce02 ualu (
@@ -784,8 +785,7 @@ always @*
 `endif
         casez( state )
             READ,
-            READW1: alu_op = op;
-
+            READW1,
 `ifndef PRESYNC
             REG,
 `endif
@@ -1267,7 +1267,7 @@ always @(posedge clk)
                 8'b0111_1010,   // PLY
                 8'b0???_??01,   // ORA, AND, EOR, ADC
                 8'b100?_10?0,   // DEY, TYA, TXA, TXS
-                8'b1010_???0,   // LDA/LDX/LDY
+                8'b1010_???0,   // LDA/LDX/LDY/TAX/TAY
                 8'b1010_0011,   // LDZ
                 8'b1011_1010,   // TSX
                 8'b1011_?1?0,   // LDX/LDY
