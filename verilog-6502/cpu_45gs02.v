@@ -9,7 +9,7 @@
  * keep this message, and the copyright notice. This code is provided "as is",
  * without any warranties of any kind.
  *
- * Support for 45GS02 instructions and addressing modes by David Banks and Ed Spittles
+ * Support for 65C02 instructions and addressing modes by David Banks and Ed Spittles
  *
  * (C) 2016 David Banks and Ed Spittles
  *
