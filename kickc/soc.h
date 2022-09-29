@@ -7,7 +7,7 @@
 #include <mos6551.h>
 
 /// CIA
-struct MOS6526_CIA * CIA = (struct MOS6526_CIA *)0x1000;
+struct MOS6526_CIA * CIA = (struct MOS6526_CIA *)0xD000;
 
 /// ACIA
-struct MOS6551_ACIA * ACIA = (struct MOS6551_ACIA *)0x1040;
+struct MOS6551_ACIA * ACIA = (struct MOS6551_ACIA *)0xD040;

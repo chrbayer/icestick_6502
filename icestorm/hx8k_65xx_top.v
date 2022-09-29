@@ -8,12 +8,12 @@ module hx8k_65xx_top(
 	input  BUT2
 );
 
-        wire       CLK1;
-        wire       locked;
-        //assign CLK1 = clk;
-        pll upll (.clock_in(clk), .clock_out(CLK1), .locked(locked));
+	wire CLK1;
+	wire locked;
+	//assign CLK1 = clk;
+	pll upll (.clock_in(clk), .clock_out(CLK1), .locked(locked));
 
-        // reset generator waits > 10us
+	// reset generator waits > 10us
 	reg [7:0] reset_cnt;
 	reg reset_n;
 	initial
@@ -89,6 +89,13 @@ module soc_65xx(
 	output wire cnt_out
 );
 
+	// Memory configuration
+	parameter
+		RAMPAGE 	= 4'h0,
+		IOPAGE  	= 4'hd,
+		CIASUBPAGE	= 6'h00,
+		ACIASUBPAGE	= 6'h01;
+
 	// Peripheral clock
     localparam clk_freq    = 35000000;
     localparam periph_freq = 3500000;
@@ -136,18 +143,16 @@ module soc_65xx(
     );
 
 	// address decode - not fully decoded for 512-byte memories
-	wire p0 = (CPU_AB[15:12] == 4'h0) ? 0 : 1;
-	wire p1 = (CPU_AB[15:12] == 4'h1) ? 0 : 1;
+	wire pRam = (CPU_AB[15:12] == RAMPAGE) ? 0 : 1;
+	wire pIo = (CPU_AB[15:12] == IOPAGE) ? 0 : 1;
 
 	wire [5:0] ios = CPU_AB[11:6];
 
 	// RAM @ pages 00-0f
 	reg [7:0] ram_mem [0:4095];
-	initial
-        $readmemh("null.hex", ram_mem);
 	reg [7:0] ram_do;
 	always @(posedge clk)
-		if((CPU_WE_n == 1'b0) && (p0 == 1'b0))
+		if((CPU_WE_n == 1'b0) && (pRam == 1'b0))
 			ram_mem[CPU_AB[11:0]] <= CPU_DO;
 	always @(posedge clk)
 		ram_do <= ram_mem[CPU_AB[11:0]];
@@ -162,7 +167,7 @@ module soc_65xx(
 		.clk(clk),
 		.phi2(pclk), // peripheral clock
 		.reset_n(reset_n),
-		.cs_n(p1 | (ios != 6'h00)),
+		.cs_n(pIo | (ios != CIASUBPAGE)),
 		.rw(CPU_WE_n),
 		.rs(CPU_AB[3:0]),
 		.db_in(CPU_DO),
@@ -187,28 +192,28 @@ module soc_65xx(
 		.clk_freq(periph_freq)
 	)
 	uacia (
-		.clk(clk),						// system clock
-		.pclk(pclk),					// peripheral clock
-		.reset_n(reset_n),				// system reset
-		.cs_n(p1 | (ios != 6'h01)),		// chip select
-		.we_n(CPU_WE_n),				// write enable
-		.rs(CPU_AB[0]),					// register select
-		.rx(RX),						// serial receive
-		.din(CPU_DO),					// data bus input
-		.dout(acia_do),					// data bus output
-		.tx(TX),						// serial transmit
-		.irq_n(acia_irq_n)				// interrupt request
+		.clk(clk),							// system clock
+		.pclk(pclk),						// peripheral clock
+		.reset_n(reset_n),					// system reset
+		.cs_n(pIo | (ios != ACIASUBPAGE)),	// chip select
+		.we_n(CPU_WE_n),					// write enable
+		.rs(CPU_AB[0]),						// register select
+		.rx(RX),							// serial receive
+		.din(CPU_DO),						// data bus input
+		.dout(acia_do),						// data bus output
+		.tx(TX),							// serial transmit
+		.irq_n(acia_irq_n)					// interrupt request
 	);
 
 	assign CPU_IRQ_n = IRQ_n & cia_irq_n & acia_irq_n;
 
 	// ROM @ pages f0,f1...
 	reg [7:0] rom_do;
-    reg [7:0] rom_mem [0:4095];
+    reg [7:0] rom_mem [0:8191];
 	initial
         $readmemh("rom.hex", rom_mem);
 	always @(posedge clk)
-		rom_do <= rom_mem[CPU_AB[11:0]];
+		rom_do <= rom_mem[CPU_AB[12:0]];
 
 
 	// data mux
@@ -221,11 +226,11 @@ module soc_65xx(
 		end
 	always @(*)
 		casez(mux_sel)
-			4'h0:    CPU_DI = ram_do;
-			4'h1:    casez(sec_sel)
-					     6'h00:   CPU_DI = cia_do;
-						 6'h01:   CPU_DI = acia_do;
-						 default: CPU_DI = rom_do;
+			RAMPAGE: CPU_DI = ram_do;
+			IOPAGE:  casez(sec_sel)
+					     CIASUBPAGE:	CPU_DI = cia_do;
+						 ACIASUBPAGE:   CPU_DI = acia_do;
+						 default: 		CPU_DI = rom_do;
 					 endcase
 			default: CPU_DI = rom_do;
 		endcase
