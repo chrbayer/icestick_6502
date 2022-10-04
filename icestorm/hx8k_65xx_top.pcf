@@ -1,7 +1,50 @@
 set_io clk J3
+
+set_io DAT[0] T8
+set_io DAT[1] P7
+set_io DAT[2] N9
+set_io DAT[3] T9
+set_io DAT[4] M9
+set_io DAT[5] R9
+set_io DAT[6] K9
+set_io DAT[7] P9
+set_io DAT[8] R10
+set_io DAT[9] L10
+set_io DAT[10] P10
+set_io DAT[11] N10
+set_io DAT[12] T10
+set_io DAT[13] T11
+set_io DAT[14] T15
+set_io DAT[15] T14
+
+set_io ADR[0] N6
+set_io ADR[1] T1
+set_io ADR[2] P4
+set_io ADR[3] R2
+set_io ADR[4] N5
+set_io ADR[5] T2
+set_io ADR[6] P5
+set_io ADR[7] R3
+set_io ADR[8] R5
+set_io ADR[9] T3
+set_io ADR[10] R4
+set_io ADR[11] M7
+set_io ADR[12] N7
+set_io ADR[13] P6
+set_io ADR[14] M8
+set_io ADR[15] T5
+set_io ADR[16] R6
+set_io ADR[17] P8
+
+set_io RAMOE L9
+set_io RAMWE T7
+set_io RAMCS T6
+
 set_io --warn-no-port RX E4
 set_io --warn-no-port TX B2
+
 set_io LED1 M12
 set_io LED2 R16
+
 set_io BUT1 K11
 set_io BUT2 P13

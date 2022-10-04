@@ -111,21 +111,20 @@ parameter
         ZEROPAGE  = 8'h00,
         STACKPAGE = 8'h01;
 
-parameter
-        SEL_A    = 2'd0,
-        SEL_S    = 2'd1,
-        SEL_X    = 2'd2,
-        SEL_Y    = 2'd3;
+localparam SEL_A = 2'd0;
+localparam SEL_S = 2'd1;
+localparam SEL_X = 2'd2;
+localparam SEL_Y = 2'd3;
 
 /*
  * define some signals for watching in simulator output
  */
 
 `ifdef SIM
-wire [7:0]   A = AXYS[SEL_A];           // Accumulator
-wire [7:0]   X = AXYS[SEL_X];           // X register
-wire [7:0]   Y = AXYS[SEL_Y];           // Y register
-wire [7:0]   S = AXYS[SEL_S];           // Stack pointer
+wire [7:0] A = AXYS[SEL_A];     // Accumulator
+wire [7:0] X = AXYS[SEL_X];     // X register
+wire [7:0] Y = AXYS[SEL_Y];     // Y register
+wire [7:0] S = AXYS[SEL_S];     // Stack pointer
 `endif
 
 wire [7:0] P = { N, V, 2'b11, D, I, Z, C };
@@ -134,7 +133,7 @@ wire [7:0] P = { N, V, 2'b11, D, I, Z, C };
  * instruction decoder/sequencer
  */
 
-reg [5:0] state;
+reg [5:0] state = RESET;
 
 /*
  * control signals
@@ -197,14 +196,13 @@ reg res;                // in reset
  * ALU operations
  */
 
-parameter
-        OP_OR  = 4'b1100,
-        OP_AND = 4'b1101,
-        OP_EOR = 4'b1110,
-        OP_ADD = 4'b0011,
-        OP_SUB = 4'b0111,
-        OP_ROL = 4'b1011,
-        OP_A   = 4'b1111;
+localparam OP_OR  = 4'b1100;
+localparam OP_AND = 4'b1101;
+localparam OP_EOR = 4'b1110;
+localparam OP_ADD = 4'b0011;
+localparam OP_SUB = 4'b0111;
+localparam OP_ROL = 4'b1011;
+localparam OP_A   = 4'b1111;
 
 /*
  * Microcode state machine. Basically, every addressing mode has its own
@@ -213,62 +211,62 @@ parameter
  * kept in separate flops.
  */
 
-parameter
-    ABS0   = 6'd0,  // ABS     - fetch LSB
-    ABS1   = 6'd1,  // ABS     - fetch MSB
-    ABSX0  = 6'd2,  // ABS, X  - fetch LSB and send to ALU (+X)
-    ABSX1  = 6'd3,  // ABS, X  - fetch MSB and send to ALU (+Carry)
-    ABSX2  = 6'd4,  // ABS, X  - Wait for ALU (only if needed)
-    BRA0   = 6'd5,  // Branch  - fetch offset and send to ALU (+PC[7:0])
-    BRA1   = 6'd6,  // Branch  - fetch opcode, and send PC[15:8] to ALU
-    BRA2   = 6'd7,  // Branch  - fetch opcode (if page boundary crossed)
-    BRK0   = 6'd8,  // BRK/IRQ - push PCH, send S to ALU (-1)
-    BRK1   = 6'd9,  // BRK/IRQ - push PCL, send S to ALU (-1)
-    BRK2   = 6'd10, // BRK/IRQ - push P, send S to ALU (-1)
-    BRK3   = 6'd11, // BRK/IRQ - write S, and fetch @ fffe
-    DECODE = 6'd12, // IR is valid, decode instruction, and write prev reg
-    FETCH  = 6'd13, // fetch next opcode, and perform prev ALU op
-    INDX0  = 6'd14, // (ZP,X)  - fetch ZP address, and send to ALU (+X)
-    INDX1  = 6'd15, // (ZP,X)  - fetch LSB at ZP+X, calculate ZP+X+1
-    INDX2  = 6'd16, // (ZP,X)  - fetch MSB at ZP+X+1
-    INDX3  = 6'd17, // (ZP,X)  - fetch data
-    INDY0  = 6'd18, // (ZP),Y  - fetch ZP address, and send ZP to ALU (+1)
-    INDY1  = 6'd19, // (ZP),Y  - fetch at ZP+1, and send LSB to ALU (+Y)
-    INDY2  = 6'd20, // (ZP),Y  - fetch data, and send MSB to ALU (+Carry)
-    INDY3  = 6'd21, // (ZP),Y) - fetch data (if page boundary crossed)
-    JMP0   = 6'd22, // JMP     - fetch PCL and hold
-    JMP1   = 6'd23, // JMP     - fetch PCH
-    JMPI0  = 6'd24, // JMP IND - fetch LSB and send to ALU for delay (+0)
-    JMPI1  = 6'd25, // JMP IND - fetch MSB, proceed with JMP0 state
-    JSR0   = 6'd26, // JSR     - push PCH, save LSB, send S to ALU (-1)
-    JSR1   = 6'd27, // JSR     - push PCL, send S to ALU (-1)
-    JSR2   = 6'd28, // JSR     - write S
-    JSR3   = 6'd29, // JSR     - fetch MSB
-    PULL0  = 6'd30, // PLP/PLA/PLX/PLY - save next op in IRHOLD, send S to ALU (+1)
-    PULL1  = 6'd31, // PLP/PLA/PLX/PLY - fetch data from stack, write S
-    PULL2  = 6'd32, // PLP/PLA/PLX/PLY - prefetch op, but don't increment PC
-    PUSH0  = 6'd33, // PHP/PHA/PHX/PHY - send A to ALU (+0)
-    PUSH1  = 6'd34, // PHP/PHA/PHX/PHY - write A/P, send S to ALU (-1)
-    READ   = 6'd35, // Read memory for read/modify/write (INC, DEC, shift)
-    RDONLY = 6'd36, // Read memory for BBS/BBR
-    REG    = 6'd37, // Read register for reg-reg transfers
-    RTI0   = 6'd38, // RTI     - send S to ALU (+1)
-    RTI1   = 6'd39, // RTI     - read P from stack
-    RTI2   = 6'd40, // RTI     - read PCL from stack
-    RTI3   = 6'd41, // RTI     - read PCH from stack
-    RTI4   = 6'd42, // RTI     - read PCH from stack
-    RTS0   = 6'd43, // RTS     - send S to ALU (+1)
-    RTS1   = 6'd44, // RTS     - read PCL from stack
-    RTS2   = 6'd45, // RTS     - write PCL to ALU, read PCH
-    RTS3   = 6'd46, // RTS     - load PC and increment
-    WRITE  = 6'd47, // Write memory for read/modify/write
-    ZP0    = 6'd48, // Z-page  - fetch ZP address
-    ZPX0   = 6'd49, // ZP, X   - fetch ZP, and send to ALU (+X)
-    ZPX1   = 6'd50, // ZP, X   - load from memory
-    IND0   = 6'd51, // (ZP)    - fetch ZP address, and send to ALU (+0)
-    JMPIX0 = 6'd52, // JMP (,X)- fetch LSB and send to ALU (+X)
-    JMPIX1 = 6'd53, // JMP (,X)- fetch MSB and send to ALU (+Carry)
-    JMPIX2 = 6'd54; // JMP (,X)- Wait for ALU (only if needed)
+localparam RESET  = 6'd0;  // During reset and initial state
+localparam ABS0   = 6'd1;  // ABS     - fetch LSB
+localparam ABS1   = 6'd2;  // ABS     - fetch MSB
+localparam ABSX0  = 6'd3;  // ABS, X  - fetch LSB and send to ALU (+X)
+localparam ABSX1  = 6'd4;  // ABS, X  - fetch MSB and send to ALU (+Carry)
+localparam ABSX2  = 6'd5;  // ABS, X  - Wait for ALU (only if needed)
+localparam BRA0   = 6'd6;  // Branch  - fetch offset and send to ALU (+PC[7:0])
+localparam BRA1   = 6'd7;  // Branch  - fetch opcode, and send PC[15:8] to ALU
+localparam BRA2   = 6'd8;  // Branch  - fetch opcode (if page boundary crossed)
+localparam BRK0   = 6'd9;  // BRK/IRQ - push PCH, send S to ALU (-1)
+localparam BRK1   = 6'd10; // BRK/IRQ - push PCL, send S to ALU (-1)
+localparam BRK2   = 6'd11; // BRK/IRQ - push P, send S to ALU (-1)
+localparam BRK3   = 6'd12; // BRK/IRQ - write S, and fetch @ fffe
+localparam DECODE = 6'd13; // IR is valid, decode instruction, and write prev reg
+localparam FETCH  = 6'd14; // fetch next opcode, and perform prev ALU op
+localparam INDX0  = 6'd15; // (ZP,X)  - fetch ZP address, and send to ALU (+X)
+localparam INDX1  = 6'd16; // (ZP,X)  - fetch LSB at ZP+X, calculate ZP+X+1
+localparam INDX2  = 6'd17; // (ZP,X)  - fetch MSB at ZP+X+1
+localparam INDX3  = 6'd18; // (ZP,X)  - fetch data
+localparam INDY0  = 6'd19; // (ZP),Y  - fetch ZP address, and send ZP to ALU (+1)
+localparam INDY1  = 6'd20; // (ZP),Y  - fetch at ZP+1, and send LSB to ALU (+Y)
+localparam INDY2  = 6'd21; // (ZP),Y  - fetch data, and send MSB to ALU (+Carry)
+localparam INDY3  = 6'd22; // (ZP),Y) - fetch data (if page boundary crossed)
+localparam JMP0   = 6'd23; // JMP     - fetch PCL and hold
+localparam JMP1   = 6'd24; // JMP     - fetch PCH
+localparam JMPI0  = 6'd25; // JMP IND - fetch LSB and send to ALU for delay (+0)
+localparam JMPI1  = 6'd26; // JMP IND - fetch MSB, proceed with JMP0 state
+localparam JSR0   = 6'd27; // JSR     - push PCH, save LSB, send S to ALU (-1)
+localparam JSR1   = 6'd28; // JSR     - push PCL, send S to ALU (-1)
+localparam JSR2   = 6'd29; // JSR     - write S
+localparam JSR3   = 6'd30; // JSR     - fetch MSB
+localparam PULL0  = 6'd31; // PLP/PLA/PLX/PLY - save next op in IRHOLD, send S to ALU (+1)
+localparam PULL1  = 6'd32; // PLP/PLA/PLX/PLY - fetch data from stack, write S
+localparam PULL2  = 6'd33; // PLP/PLA/PLX/PLY - prefetch op, but don't increment PC
+localparam PUSH0  = 6'd34; // PHP/PHA/PHX/PHY - send A to ALU (+0)
+localparam PUSH1  = 6'd35; // PHP/PHA/PHX/PHY - write A/P, send S to ALU (-1)
+localparam READ   = 6'd36; // Read memory for read/modify/write (INC, DEC, shift)
+localparam RDONLY = 6'd37; // Read memory for BBS/BBR
+localparam REG    = 6'd38; // Read register for reg-reg transfers
+localparam RTI0   = 6'd39; // RTI     - send S to ALU (+1)
+localparam RTI1   = 6'd40; // RTI     - read P from stack
+localparam RTI2   = 6'd41; // RTI     - read PCL from stack
+localparam RTI3   = 6'd42; // RTI     - read PCH from stack
+localparam RTI4   = 6'd43; // RTI     - read PCH from stack
+localparam RTS0   = 6'd44; // RTS     - send S to ALU (+1)
+localparam RTS1   = 6'd45; // RTS     - read PCL from stack
+localparam RTS2   = 6'd46; // RTS     - write PCL to ALU, read PCH
+localparam RTS3   = 6'd47; // RTS     - load PC and increment
+localparam WRITE  = 6'd48; // Write memory for read/modify/write
+localparam ZP0    = 6'd49; // Z-page  - fetch ZP address
+localparam ZPX0   = 6'd50; // ZP, X   - fetch ZP, and send to ALU (+X)
+localparam ZPX1   = 6'd51; // ZP, X   - load from memory
+localparam IND0   = 6'd52; // (ZP)    - fetch ZP address, and send to ALU (+0)
+localparam JMPIX0 = 6'd53; // JMP (,X)- fetch LSB and send to ALU (+X)
+localparam JMPIX1 = 6'd54; // JMP (,X)- fetch MSB and send to ALU (+Carry)
+localparam JMPIX2 = 6'd55; // JMP (,X)- Wait for ALU (only if needed)
 
 `ifdef SIM
 /*
@@ -278,6 +276,7 @@ reg [8*6-1:0] statename;
 
 always @*
     casez( state )
+        RESET:  statename = "RESET";
         DECODE: statename = "DECODE";
         REG:    statename = "REG";
         ZP0:    statename = "ZP0";
@@ -402,7 +401,7 @@ always @*
  * Set new PC
  */
 always @(posedge clk)
-    if( RDY )
+    if( RDY && reset_n )
         PC <= PC_temp + { 15'd0, PC_inc };
 
 
@@ -442,7 +441,7 @@ always @*
         RTI1,
         RTI2,
         RTI3,
-        BRK2:           AB = { STACKPAGE, ADD };
+        BRK2:           AB = res ? PC : { STACKPAGE, ADD };
 
         INDY1,
         INDX1,
@@ -601,8 +600,9 @@ assign AZ1 = AZ;
  * the ALU during those cycles.
  */
 always @(posedge clk)
-    if( write_register & RDY )
-        AXYS[regsel] <= (state == JSR0) ? DIMUX : AO;
+    if ( reset_n && state != RESET )
+        if( write_register & RDY )
+            AXYS[regsel] <= (state == JSR0) ? DIMUX : AO;
 
 
 /*
@@ -926,7 +926,7 @@ always @(posedge clk )
  */
 
 always @(posedge clk )
-    if( ~reset_n )
+    if( ~reset_n || state == RESET )
         IRHOLD_valid <= 0;
     else if( RDY ) begin
         if( state == PULL0 || state == PUSH0 ) begin
@@ -950,8 +950,8 @@ assign DIMUX = ~RDY ? DIHOLD : DI;
 /*
  * Microcode state machine
  */
-always @(posedge clk or negedge reset_n)
-    if( ~reset_n ) state <= BRK0;
+always @(posedge clk)
+    if( ~reset_n ) state <= RESET;
     else if( RDY ) casez( state )
         DECODE:
             /* verilator lint_off CASEOVERLAP */
@@ -1070,6 +1070,8 @@ always @(posedge clk or negedge reset_n)
         JMPI0:  state <= JMPI1;
         JMPI1:  state <= JMP0;
 
+        RESET:  state <= BRK2;
+
         BRK0:   state <= BRK1;
         BRK1:   state <= BRK2;
         BRK2:   state <= BRK3;
@@ -1084,7 +1086,7 @@ always @(posedge clk or negedge reset_n)
  */
 
 always @(posedge clk)
-    if( ~reset_n )
+    if( ~reset_n || state == RESET )
         res <= 1;
     else if( state == DECODE )
         res <= 0;
@@ -1139,7 +1141,7 @@ always @(posedge clk)
 
 
 always @(posedge clk)
-     if( state == DECODE && RDY )
+    if( state == DECODE && RDY )
         casez( IR )
             8'b1011_1010:   // TSX
                             src_reg <= SEL_S;
@@ -1163,7 +1165,7 @@ always @(posedge clk)
 
 
 always @(posedge clk)
-     if( state == DECODE && RDY )
+    if( state == DECODE && RDY )
         casez( IR )
             8'b???1_0001,   // INDY
             8'b10?1_0110,   // LDX zp,Y / STX zp,Y
@@ -1176,7 +1178,7 @@ always @(posedge clk)
 
 
 always @(posedge clk)
-     if( state == DECODE && RDY )
+    if( state == DECODE && RDY )
         casez( IR )
             8'b1001_0010,   // STA (zp)
             8'b100?_?1?0,   // STX, STY, STZ abs, STZ abs,x
@@ -1189,7 +1191,7 @@ always @(posedge clk)
 
 
 always @(posedge clk )
-     if( state == DECODE && RDY )
+    if( state == DECODE && RDY )
         casez( IR )
             8'b0???_?110,   // ASL, ROL, LSR, ROR
             8'b000?_?100,   // TSB/TRB
@@ -1202,7 +1204,7 @@ always @(posedge clk )
 
 
 always @(posedge clk )
-     if( state == DECODE && RDY )
+    if( state == DECODE && RDY )
         casez( IR )
             8'b101?_????:   // LDA, LDX, LDY
                             load_only <= 1;
@@ -1211,8 +1213,8 @@ always @(posedge clk )
         endcase
 
 
-always @(posedge clk )
-     if( state == DECODE && RDY )
+always @(posedge clk)
+    if( state == DECODE && RDY )
         casez( IR )
             8'b0001_1010,   // INCA
             8'b111?_?110,   // INC

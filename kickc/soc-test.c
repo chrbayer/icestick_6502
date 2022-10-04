@@ -5,15 +5,21 @@
 
 const unsigned int LOW = 0x1000;
 const unsigned int HIGH = 0xF000;
-const unsigned int INC = 0x100;
+const unsigned int INC = 0x800;
 
 unsigned int t = 0x4000;
 bool d = true;
 unsigned char x = 0;
-
+unsigned int a;
 
 void main() {
     unsigned char old = 0;
+
+    *(&a) = 0x1234;
+
+    ++a;
+
+    if (a == 0x1235) a = 0;
 
     // Configure CIA
     CIA->PORT_B_DDR = 0xC0;

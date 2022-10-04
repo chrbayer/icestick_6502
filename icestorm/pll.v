@@ -6,8 +6,8 @@
  * Use at your own risk.
  *
  * Given input frequency:       100.000 MHz
- * Requested output frequency:   35.000 MHz
- * Achieved output frequency:    35.000 MHz
+ * Requested output frequency:   50.000 MHz
+ * Achieved output frequency:    50.000 MHz
  */
 
 module pll(
@@ -16,12 +16,13 @@ module pll(
 	output locked
 	);
 
+`ifndef SIM
 SB_PLL40_CORE #(
 		.FEEDBACK_PATH("SIMPLE"),
-		.DIVR(4'b0100),		// DIVR =  4
-		.DIVF(7'b0011011),	// DIVF = 27
+		.DIVR(4'b0000),		// DIVR =  0
+		.DIVF(7'b0000111),	// DIVF =  7
 		.DIVQ(3'b100),		// DIVQ =  4
-		.FILTER_RANGE(3'b010)	// FILTER_RANGE = 2
+		.FILTER_RANGE(3'b101)	// FILTER_RANGE = 5
 	) uut (
 		.LOCK(locked),
 		.RESETB(1'b1),
@@ -29,5 +30,9 @@ SB_PLL40_CORE #(
 		.REFERENCECLK(clock_in),
 		.PLLOUTCORE(clock_out)
 		);
+`else
+	assign clock_out = clock_in;
+	assign locked = 1'b1;
+`endif
 
 endmodule

@@ -1,4 +1,4 @@
-module gw1n1_6502_top(
+module gw1n1_6502_top (
 	input  RX,
 	output TX,
 	input  clk,

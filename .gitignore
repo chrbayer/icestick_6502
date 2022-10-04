@@ -31,3 +31,7 @@ icestorm/hx8k_65xx_top.bin
 icestorm/hx8k_65xx_top.json
 icestorm/hx8k_65xx_top.rpt
 icestorm/runs/
+icestorm/tb_hx8k_65xx_top
+icestorm/*.vcd
+icestorm/*.lxt
+icestorm/*.gtkw

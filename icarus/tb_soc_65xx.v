@@ -52,16 +52,24 @@ module tb_soc_65xx;
 
 `ifdef VERIFICATION
 `ifdef VERIFICATION_6502
-		#338380000 $finish;
+		#3383800 $finish;
+  		$dumpfile("tb_soc_6502.lxt");
+		$dumpvars/*(1, uut)*/;
 `endif
 `ifdef VERIFICATION_65C02
-		#239610000 $finish;
+		#3383800 $finish;
+  		$dumpfile("tb_soc_6502.lxt");
+		$dumpvars/*(1, uut)*/;
 `endif
 `ifdef DECIMAL_TEST_65C02
-		#34350000 $finish;
+		#3383800 $finish;
+  		$dumpfile("tb_soc_6502.lxt");
+		$dumpvars/*(1, uut)*/;
 `endif
 `ifdef VERIFICATION_65CE02
-		#12830000 $finish;
+		#3383800 $finish;
+  		$dumpfile("tb_soc_6502.lxt");
+		$dumpvars/*(1, uut)*/;
 `endif
 `else       // stop after 1 sec
 		#100000 $finish;

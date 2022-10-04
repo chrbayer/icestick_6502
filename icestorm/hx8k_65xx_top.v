@@ -1,46 +1,143 @@
-module hx8k_65xx_top(
+module hx8k_65xx_top (
+`ifndef SIM
+	input  clk,
+    output [17:0] ADR,
+    inout [15:0] DAT,
+    output RAMOE,
+    output RAMWE,
+    output RAMCS,
+`endif
 	input  RX,
 	output TX,
-	input  clk,
 	output LED1,
 	output LED2,
 	input  BUT1,
 	input  BUT2
 );
 
+`ifdef SIM
+    // clock source
+	reg clk;
+    wire [17:0] ADR;
+    wire [15:0] DAT;
+    wire RAMOE;
+    wire RAMWE;
+    wire RAMCS;
+
+    always
+        #2 clk = ~clk;
+
+    // reset
+    initial
+    begin
+  		$dumpfile("tb_hx8k_65xx_top.lxt");
+		$dumpvars;
+
+        // init regs
+        clk = 1'b0;
+
+		#100000 $finish;
+	end
+`endif
+
+	wire CLK0;
 	wire CLK1;
 	wire locked;
-	//assign CLK1 = clk;
-	pll upll (.clock_in(clk), .clock_out(CLK1), .locked(locked));
+	pll upll (.clock_in(clk), .clock_out(CLK0), .locked(locked));
+	clk_div3 udiv3 (.clk(CLK0), .clk_out(CLK1), .reset_n(reset_n));
 
 	// reset generator waits > 10us
-	reg [7:0] reset_cnt;
+	reg [6:0] reset_cnt = 7'd0;
 	reg reset_n;
-	initial
-        reset_cnt <= 8'h00;
 
-	always @(posedge CLK1)
+    wire [15:0] data_pins_in;
+    wire [15:0] data_pins_out;
+    wire data_pins_out_en;
+	wire sram_ready;
+	wire sram_read_n;
+	wire sram_write_n;
+	wire [17:0] sram_address;
+	wire [15:0] sram_data_read;
+	wire [15:0] sram_data_write;
+
+`ifndef SIM
+    SB_IO #(
+        .PIN_TYPE(6'b 1010_01),
+    ) sram_data_pins [15:0] (
+        .PACKAGE_PIN(DAT),
+        .OUTPUT_ENABLE(data_pins_out_en),
+        .D_OUT_0(data_pins_out),
+        .D_IN_0(data_pins_in),
+    );
+`else
+	assign DAT = data_pins_out;
+`endif
+
+    sram usram (
+		.clk(CLK0),
+		.address(sram_address),
+		.data_read(sram_data_read),
+		.data_write(sram_data_write),
+		.write(sram_write_n),
+		.read(sram_read_n),
+		.reset_n(reset_n),
+		.ready(sram_ready),
+        .data_pins_in(data_pins_in),
+        .data_pins_out(data_pins_out),
+        .data_pins_out_en(data_pins_out_en),
+        .address_pins(ADR),
+        .OE(RAMOE),
+		.WE(RAMWE),
+		.CS(RAMCS)
+	);
+
+`ifdef SIM
+	sram_chip usram_chip (
+		.clk(CLK0),
+		.addr(sram_address),
+		.data_in(data_pins_out),
+		.data_out(data_pins_in),
+		.oe(RAMOE),
+		.we(RAMWE),
+		.cs(RAMCS)
+	);
+`endif
+
+	always @(posedge CLK0)
 	begin
-		if(reset_cnt != 8'hff)
+		if(reset_cnt != 7'd126)
         begin
-            reset_cnt <= reset_cnt + 8'h01;
+            reset_cnt <= reset_cnt + 7'd1;
             reset_n <= 1'b0;
         end
         else
             reset_n <= 1'b1;
 	end
 
-	// test unit
+	// soc
+	wire [15:0] bus_addr;
+	wire [7:0] bus_do;
+	assign sram_address = { 2'b00, bus_addr };
+	assign sram_data_write = { 8'h00, bus_do };
+
 	wire [7:0] gpio_a_i, gpio_a_o;
 	wire [7:0] gpio_b_i, gpio_b_o;
 	wire pc_n, sp_out, cnt_out;
 	assign gpio_b_i[7:2] = 6'h00;
+
 	soc_65xx u6502 (
 		.clk(CLK1),
 		.reset_n(reset_n),
+		.ready(1'b1),
 
 		.IRQ_n(1'b1),
 		.NMI_n(1'b1),
+
+		.bus_addr(bus_addr),
+		.bus_do(bus_do),
+		.bus_di(sram_data_read[7:0]),
+		.bus_read(sram_read_n),
+		.bus_write(sram_write_n),
 
 		.RX(RX),
 		.TX(TX),
@@ -63,12 +160,39 @@ module hx8k_65xx_top(
 	assign gpio_b_i[1:0] = {BUT1,BUT2};
 endmodule
 
-module soc_65xx(
+module clk_div3 (clk, clk_out, reset_n);
+	input clk;
+	output clk_out;
+	input reset_n;
+
+	reg [1:0] pos_count, neg_count;
+
+	always @(posedge clk)
+		if( ~reset_n ) pos_count <= 2;
+		else if( pos_count == 2 ) pos_count <= 0;
+		else pos_count <= pos_count + 1;
+
+	always @(negedge clk)
+		if( ~reset_n ) neg_count <= 1;
+		else if( neg_count == 2 ) neg_count <= 0;
+		else neg_count <= neg_count + 1;
+
+	assign clk_out = reset_n && ((pos_count == 2) | (neg_count == 2));
+endmodule
+
+module soc_65xx (
     input clk,              // SOC System clock
     input reset_n,          // Low-true reset
+	input ready,
 
 	input IRQ_n,
 	input NMI_n,
+
+	output wire [15:0] bus_addr,
+	output wire [7:0] bus_do,
+	input [7:0] bus_di,
+	output wire bus_read,
+	output wire bus_write,
 
 	input RX,				// serial RX
 	output TX,				// serial TX
@@ -91,15 +215,19 @@ module soc_65xx(
 
 	// Memory configuration
 	parameter
-		RAMPAGE 	= 4'h0,
+		RAMPAGEMIN  = 4'h0,
+		RAMPAGEMAX  = 4'hc,
+		ROMPAGE1 	= 4'he,
+		ROMPAGE2 	= 4'hf,
 		IOPAGE  	= 4'hd,
 		CIASUBPAGE	= 6'h00,
 		ACIASUBPAGE	= 6'h01;
 
 	// Peripheral clock
-    localparam clk_freq    = 35000000;
-    localparam periph_freq = 3500000;
-    localparam pclk_cnt = (clk_freq / periph_freq);
+	parameter
+		clk_freq    = 16666666,
+		periph_freq = 3333333;
+	localparam pclk_cnt = (clk_freq / periph_freq);
 	localparam PCW = $clog2(pclk_cnt);
 
 	reg pclk;
@@ -139,25 +267,22 @@ module soc_65xx(
         .WE_n(CPU_WE_n),
         .IRQ_n(CPU_IRQ_n),
         .NMI_n(NMI_n),
-        .RDY(1'b1)
+        .RDY(ready)
     );
 
-	// address decode - not fully decoded for 512-byte memories
-	wire pRam = (CPU_AB[15:12] == RAMPAGE) ? 0 : 1;
-	wire pIo = (CPU_AB[15:12] == IOPAGE) ? 0 : 1;
+	// address decode
+	wire pFlash = (CPU_AB[15:12] == ROMPAGE1 || CPU_AB[15:12] == ROMPAGE2) ? 1'b1 : 1'b0;
+	wire pIo = (CPU_AB[15:12] == IOPAGE) ? 1'b1 : 1'b0;
+	wire pRam = (CPU_AB[15:12] >= RAMPAGEMIN && CPU_AB[15:12] <= RAMPAGEMAX) ? 1'b1 : 1'b0;
 
 	wire [5:0] ios = CPU_AB[11:6];
 
-	// RAM @ pages 00-0f
-	reg [7:0] ram_mem [0:4095];
-	reg [7:0] ram_do;
-	always @(posedge clk)
-		if((CPU_WE_n == 1'b0) && (pRam == 1'b0))
-			ram_mem[CPU_AB[11:0]] <= CPU_DO;
-	always @(posedge clk)
-		ram_do <= ram_mem[CPU_AB[11:0]];
+	assign bus_read = pRam & CPU_WE_n;
+	assign bus_write = pRam & ~CPU_WE_n;
+	assign bus_addr = CPU_AB;
+	assign bus_do = CPU_DO;
 
-	// CIA @ page 10-1f
+	// CIA @ page d0-df
 	wire [7:0] cia_do;
 	wire cia_irq_n;
 	mos6526 #(
@@ -167,7 +292,7 @@ module soc_65xx(
 		.clk(clk),
 		.phi2(pclk), // peripheral clock
 		.reset_n(reset_n),
-		.cs_n(pIo | (ios != CIASUBPAGE)),
+		.cs_n(~pIo | (ios != CIASUBPAGE)),
 		.rw(CPU_WE_n),
 		.rs(CPU_AB[3:0]),
 		.db_in(CPU_DO),
@@ -185,7 +310,7 @@ module soc_65xx(
 		.irq_n(cia_irq_n)
 	);
 
-	// ACIA at page 20-2f
+	// ACIA at page d0-df
 	wire [7:0] acia_do;
 	wire acia_irq_n;
 	acia #(
@@ -195,7 +320,7 @@ module soc_65xx(
 		.clk(clk),							// system clock
 		.pclk(pclk),						// peripheral clock
 		.reset_n(reset_n),					// system reset
-		.cs_n(pIo | (ios != ACIASUBPAGE)),	// chip select
+		.cs_n(~pIo | (ios != ACIASUBPAGE)),	// chip select
 		.we_n(CPU_WE_n),					// write enable
 		.rs(CPU_AB[0]),						// register select
 		.rx(RX),							// serial receive
@@ -207,7 +332,7 @@ module soc_65xx(
 
 	assign CPU_IRQ_n = IRQ_n & cia_irq_n & acia_irq_n;
 
-	// ROM @ pages f0,f1...
+	// ROM @ pages e0-ff
 	reg [7:0] rom_do;
     reg [7:0] rom_mem [0:8191];
 	initial
@@ -224,14 +349,15 @@ module soc_65xx(
 			mux_sel <= CPU_AB[15:12];
 			sec_sel <= CPU_AB[11:6];
 		end
-	always @(*)
+	always @*
 		casez(mux_sel)
-			RAMPAGE: CPU_DI = ram_do;
+			ROMPAGE1,
+			ROMPAGE2:	CPU_DI = rom_do;
 			IOPAGE:  casez(sec_sel)
 					     CIASUBPAGE:	CPU_DI = cia_do;
 						 ACIASUBPAGE:   CPU_DI = acia_do;
-						 default: 		CPU_DI = rom_do;
+						 default: 		CPU_DI = bus_di;
 					 endcase
-			default: CPU_DI = rom_do;
+			default: CPU_DI = bus_di;
 		endcase
 endmodule

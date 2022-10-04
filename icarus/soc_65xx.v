@@ -1,7 +1,7 @@
 // tst_6502.v - test 6502 core
 // 02-11-19 E. Brombaugh
 
-module soc_65xx(
+module soc_65xx (
     input clk,              // SOC System clock
     input reset_n,          // Low-true reset
 
@@ -29,17 +29,19 @@ module soc_65xx(
 
 	// Memory configuration
 	parameter
-		RAMPAGE 	= 4'h0,
+		ROMPAGE0	= 4'hc,
+		ROMPAGE1 	= 4'he,
+		ROMPAGE2 	= 4'hf,
 		IOPAGE  	= 4'hd,
 		CIASUBPAGE	= 6'h00,
 		ACIASUBPAGE	= 6'h01;
 
 	// Peripheral clock
-    localparam clk_freq    = 35000000;
+	parameter clk_freq    	= 16666666;
 
 `ifndef VERIFICATION
-    localparam periph_freq = 3500000;
-    localparam pclk_cnt = (clk_freq / periph_freq);
+	parameter  periph_freq = 3333333;
+	localparam pclk_cnt = (clk_freq / periph_freq);
 	localparam PCW = $clog2(pclk_cnt);
 
 	reg pclk;
@@ -92,23 +94,24 @@ module soc_65xx(
         .RDY(1'b1)
     );
 
-	// address decode - not fully decoded for 512-byte memories
-	wire pRam = (CPU_AB[15:12] == RAMPAGE) ? 0 : 1;
-	wire pIo = (CPU_AB[15:12] == IOPAGE) ? 0 : 1;
+	// address decode
+	wire pFlash = (CPU_AB[15:12] == ROMPAGE1 || CPU_AB[15:12] == ROMPAGE2) ? 1'b1 : 1'b0;
+	wire pIo = (CPU_AB[15:12] == IOPAGE) ? 1'b1 : 1'b0;
+	wire pRam = ~pIo & ~pFlash;
 
 	wire [5:0] ios = CPU_AB[11:6];
 
-	// RAM @ pages 00-0f
-	reg [7:0] ram_mem [0:4095];
+	// RAM @ pages 00-cf
+	reg [7:0] ram_mem [0:49151];
 	reg [7:0] ram_do;
 	always @(posedge clk)
-		if((CPU_WE_n == 1'b0) && (pRam == 1'b0))
-			ram_mem[CPU_AB[11:0]] <= CPU_DO;
+		if((CPU_WE_n == 1'b0) && (pRam == 1'b1))
+			ram_mem[CPU_AB[15:0]] <= CPU_DO;
 	always @(posedge clk)
-		ram_do <= ram_mem[CPU_AB[11:0]];
+		ram_do <= ram_mem[CPU_AB[15:0]];
 
 `ifndef VERIFICATION
-	// CIA @ page 10-1f
+	// CIA @ page d0-df
 	wire [7:0] cia_do;
 	wire cia_irq_n;
 	mos6526 #(
@@ -118,7 +121,7 @@ module soc_65xx(
 		.clk(clk),
 		.phi2(pclk), // peripheral clock
 		.reset_n(reset_n),
-		.cs_n(pIo | (ios != CIASUBPAGE)),
+		.cs_n(~pIo | (ios != CIASUBPAGE)),
 		.rw(CPU_WE_n),
 		.rs(CPU_AB[3:0]),
 		.db_in(CPU_DO),
@@ -136,7 +139,7 @@ module soc_65xx(
 		.irq_n(cia_irq_n)
 	);
 
-	// ACIA at page 20-2f
+	// ACIA at page d0-df
 	wire [7:0] acia_do;
 	wire acia_irq_n;
 	acia #(
@@ -146,7 +149,7 @@ module soc_65xx(
 		.clk(clk),							// system clock
 		.pclk(pclk),						// peripheral clock
 		.reset_n(reset_n),					// system reset
-		.cs_n(pIo | (ios != ACIASUBPAGE)),	// chip select
+		.cs_n(~pIo | (ios != ACIASUBPAGE)),	// chip select
 		.we_n(CPU_WE_n),					// write enable
 		.rs(CPU_AB[0]),						// register select
 		.rx(RX),							// serial receive
@@ -161,7 +164,7 @@ module soc_65xx(
 	assign CPU_IRQ_n = IRQ_n;
 `endif
 
-	// ROM @ pages f0,f1...
+	// ROM @ pages e0-ff
 	reg [7:0] rom_do;
 `ifdef VERIFICATION
     reg [7:0] rom_mem [0:16383];
@@ -212,16 +215,20 @@ module soc_65xx(
 			mux_sel <= CPU_AB[15:12];
 			sec_sel <= CPU_AB[11:6];
 		end
-	always @(*)
+	always @*
 		casez(mux_sel)
-			RAMPAGE: CPU_DI = ram_do;
+			ROMPAGE1,
+			ROMPAGE2:	CPU_DI = rom_do;
 `ifndef VERIFICATION
 			IOPAGE:  casez(sec_sel)
 					     CIASUBPAGE:   	CPU_DI = cia_do;
 						 ACIASUBPAGE:   CPU_DI = acia_do;
-						 default: 		CPU_DI = rom_do;
+						 default: 		CPU_DI = ram_do;
 					 endcase
+`else
+			ROMPAGE0,
+			IOPAGE:  CPU_DI = rom_do;
 `endif
-			default: CPU_DI = rom_do;
+			default: CPU_DI = ram_do;
 		endcase
 endmodule
