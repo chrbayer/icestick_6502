@@ -19,6 +19,11 @@ module tb_soc_65xx;
 	reg cnt_in;
 	wire cnt_out;
 
+    parameter
+        clk_freq    = 32000000,
+        periph_freq = 4000000,
+        baudrate    = 9600;
+
     // clock source
     always
         #2 clk = ~clk;
@@ -77,7 +82,12 @@ module tb_soc_65xx;
     end
 
     // Unit under test
-    soc_65xx uut (
+    soc_65xx (#
+		.clk_freq(clk_freq),
+		.periph_freq(periph_freq),
+		.baudrate(baudrate)
+    )
+    uut (
         .clk(clk),              // clock
         .reset_n(reset_n),      // Low-true reset
         .IRQ_n(1'b1),           // no interrupt

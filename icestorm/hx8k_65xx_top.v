@@ -1,4 +1,8 @@
-module hx8k_65xx_top (
+module hx8k_65xx_top #(
+	parameter clk_freq    	= 16666666,
+	parameter periph_freq 	= 3333333,
+	parameter baudrate		= 9600
+) (
 `ifndef SIM
 	input  clk,
     output [17:0] ADR,
@@ -36,7 +40,7 @@ module hx8k_65xx_top (
         // init regs
         clk = 1'b0;
 
-		#100000 $finish;
+		#600000 $finish;
 	end
 `endif
 
@@ -125,7 +129,12 @@ module hx8k_65xx_top (
 	wire pc_n, sp_out, cnt_out;
 	assign gpio_b_i[7:2] = 6'h00;
 
-	soc_65xx u6502 (
+	soc_65xx #(
+		.clk_freq(clk_freq),
+		.periph_freq(periph_freq),
+		.baudrate(baudrate)
+	)
+	u6502 (
 		.clk(CLK1),
 		.reset_n(reset_n),
 		.ready(1'b1),
@@ -180,7 +189,11 @@ module clk_div3 (clk, clk_out, reset_n);
 	assign clk_out = reset_n && ((pos_count == 2) | (neg_count == 2));
 endmodule
 
-module soc_65xx (
+module soc_65xx #(
+	parameter clk_freq    	= 16666666,
+	parameter periph_freq 	= 3333333,
+	parameter baudrate		= 9600
+) (
     input clk,              // SOC System clock
     input reset_n,          // Low-true reset
 	input ready,
@@ -223,10 +236,7 @@ module soc_65xx (
 		CIASUBPAGE	= 6'h00,
 		ACIASUBPAGE	= 6'h01;
 
-	// Peripheral clock
-	parameter
-		clk_freq    = 16666666,
-		periph_freq = 3333333;
+	// peripheral clock settings
 	localparam pclk_cnt = (clk_freq / periph_freq);
 	localparam PCW = $clog2(pclk_cnt);
 
@@ -314,7 +324,8 @@ module soc_65xx (
 	wire [7:0] acia_do;
 	wire acia_irq_n;
 	acia #(
-		.clk_freq(periph_freq)
+		.clk_freq(periph_freq),
+		.baudrate(baudrate)
 	)
 	uacia (
 		.clk(clk),							// system clock
@@ -340,7 +351,6 @@ module soc_65xx (
 	always @(posedge clk)
 		rom_do <= rom_mem[CPU_AB[12:0]];
 
-
 	// data mux
 	reg [3:0] mux_sel;
 	reg [5:0] sec_sel;
@@ -360,4 +370,37 @@ module soc_65xx (
 					 endcase
 			default: CPU_DI = bus_di;
 		endcase
+
+`ifdef SIM
+	reg uart_reset_n;
+
+	initial
+	begin
+		#2 uart_reset_n = 1'b0;
+		#552 uart_reset_n = 1'b1;
+	end
+
+	wire [7:0] rx_data;
+	wire rx_ready;
+	wire rx_error;
+
+	always @(posedge rx_ready)
+		$write("%c", rx_data);
+
+	acia_rx #(
+		.clk_freq(periph_freq),
+		.sym_rate(baudrate)
+	)
+	uuart
+	(
+		.clk(clk),
+		.pclk(pclk),
+		.reset_n(uart_reset_n),
+		.rx_serial(TX),
+		.rx_dat(rx_data),
+		.rx_stb(rx_ready),
+		.rx_err(rx_error)
+	);
+`endif
+
 endmodule

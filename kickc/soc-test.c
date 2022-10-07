@@ -12,14 +12,45 @@ bool d = true;
 unsigned char x = 0;
 unsigned int a;
 
+void acia_tx_chr(char character)
+{
+    while (!(ACIA->CTRL & 0x02)) ;
+    ACIA->DATA = character;
+}
+
+void acia_tx_str(char *text)
+{
+    while( *text != 0)
+    {
+        acia_tx_chr(*text);
+        ++text;
+    }
+}
+
 void main() {
     unsigned char old = 0;
+
+    // initialize stack
+    asm
+    {
+        ldx #$ff
+        txs
+    }
+
+    // reset ACIA
+    ACIA->CTRL = 0x03;
 
     *(&a) = 0x1234;
 
     ++a;
 
     if (a == 0x1235) a = 0;
+
+    // normal operation
+    ACIA->CTRL = 0x00;
+
+    //acia_tx_chr('H');
+    //acia_tx_chr('E');
 
     // Configure CIA
     CIA->PORT_B_DDR = 0xC0;

@@ -2,9 +2,10 @@
 // 06-02-19 E. Brombaugh
 
 module acia_rx #(
-	// default sym rate counter for 9600bps @ 4MHz clk
-    parameter SCW = 9,
-	parameter sym_cnt = 417
+  	// default peripheral clock 4MHz
+  	parameter clk_freq = 4000000,
+	// default baudrate
+	parameter sym_rate = 9600
 ) (
 	input clk,				  // system clock
 	input pclk,				  // peripheral clock
@@ -14,6 +15,9 @@ module acia_rx #(
 	output reg rx_stb,        // received data available
 	output reg rx_err         // received data error
 );
+
+    localparam sym_cnt = clk_freq / sym_rate;
+	localparam SCW = $clog2(sym_cnt);
 
 	// input sync & deglitch
 	reg [7:0] in_pipe;

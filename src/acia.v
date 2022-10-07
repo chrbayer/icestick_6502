@@ -1,7 +1,12 @@
 // acia.v - strippped-down version of MC6850 ACIA with home-made TX/RX
 // 03-02-19 E. Brombaugh
 
-module acia (
+module acia #(
+  	// default peripheral clock 4MHz
+  	parameter clk_freq = 4000000,
+	// default baudrate
+	parameter baudrate = 9600
+) (
 	input clk,				// system clock
 	input pclk,				// peripheral clock
 	input reset_n,			// system reset
@@ -15,16 +20,9 @@ module acia (
 	output irq_n			// low-true interrupt request
 );
 
-	// default system clock 4MHz
-    parameter clk_freq = 4000000;
-
-	// hard-coded bit-rate
-	localparam sym_rate = 9600;
-    localparam sym_cnt = clk_freq / sym_rate;
-	localparam SCW = $clog2(sym_cnt);
-
 	// generate tx_start signal on write to register 1
 	wire tx_start = ~cs_n & rs & ~we_n;
+	reg tx_start_buf;
 
 	// load control register
 	reg [1:0] counter_divide_select, tx_start_control;
@@ -55,7 +53,7 @@ module acia (
 	wire [7:0] rx_dat, status;
 	always @(posedge clk)
 	begin
-		if(~reset_n)
+		if(~acia_rst_n)
 		begin
 			dout <= 8'h00;
 		end
@@ -77,19 +75,24 @@ module acia (
 	reg prev_tx_busy;
 	always @(posedge clk)
 	begin
-		if(~reset_n)
+		if(~acia_rst_n)
 		begin
 			txe <= 1'b1;
 			prev_tx_busy <= 1'b0;
 		end
-		else if(pclk)
+		else
 		begin
-			prev_tx_busy <= tx_busy;
+			if(tx_start) tx_start_buf <= 1'b1;
+			else if(tx_busy) tx_start_buf <= 1'b0;
+			if(pclk)
+			begin
+				prev_tx_busy <= tx_busy;
 
-			if(tx_start)
-				txe <= 1'b0;
-			else if(prev_tx_busy & ~tx_busy)
-				txe <= 1'b1;
+				if(tx_start_buf)
+					txe <= 1'b0;
+				else if(prev_tx_busy & ~tx_busy)
+					txe <= 1'b1;
+			end
 		end
 	end
 
@@ -98,7 +101,7 @@ module acia (
 	reg rxf;
 	always @(posedge clk)
 	begin
-		if(~reset_n)
+		if(~acia_rst_n)
 			rxf <= 1'b0;
 		else if(pclk)
 		begin
@@ -125,8 +128,8 @@ module acia (
 
 	// Async Receiver
 	acia_rx #(
-		.SCW(SCW),				// rate counter width
-		.sym_cnt(sym_cnt)		// rate count value
+		.clk_freq(clk_freq),
+		.sym_rate(baudrate)
 	)
 	my_rx (
 		.clk(clk),				// system clock
@@ -140,15 +143,15 @@ module acia (
 
 	// Transmitter
 	acia_tx #(
-		.SCW(SCW),              // rate counter width
-		.sym_cnt(sym_cnt)       // rate count value
+		.clk_freq(clk_freq),
+		.sym_rate(baudrate)
 	)
 	my_tx (
 		.clk(clk),				// system clock
 		.pclk(pclk),			// peripheral clock
 		.reset_n(acia_rst_n),	// system reset
-		.tx_dat(din),           // transmit data byte
-		.tx_start(tx_start),    // trigger transmission
+		.tx_dat(din),           	// transmit data byte
+		.tx_start(tx_start_buf),	// trigger transmission
 		.tx_serial(tx),         // tx serial output
 		.tx_busy(tx_busy)       // tx is active (not ready)
 	);
