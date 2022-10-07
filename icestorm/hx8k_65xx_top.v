@@ -48,7 +48,7 @@ module hx8k_65xx_top #(
 	wire CLK1;
 	wire locked;
 	pll upll (.clock_in(clk), .clock_out(CLK0), .locked(locked));
-	clk_div3 udiv3 (.clk(CLK0), .clk_out(CLK1), .reset_n(reset_n));
+	clk_div3 udiv3 (.clk(CLK0), .clk_out(CLK1));
 
 	// reset generator waits > 10us
 	reg [6:0] reset_cnt = 7'd0;
@@ -169,24 +169,21 @@ module hx8k_65xx_top #(
 	assign gpio_b_i[1:0] = {BUT1,BUT2};
 endmodule
 
-module clk_div3 (clk, clk_out, reset_n);
+module clk_div3 (clk, clk_out);
 	input clk;
 	output clk_out;
-	input reset_n;
 
-	reg [1:0] pos_count, neg_count;
+	reg [1:0] pos_count = 1, neg_count = 0;
 
 	always @(posedge clk)
-		if( ~reset_n ) pos_count <= 2;
-		else if( pos_count == 2 ) pos_count <= 0;
+		if( pos_count == 2 ) pos_count <= 0;
 		else pos_count <= pos_count + 1;
 
 	always @(negedge clk)
-		if( ~reset_n ) neg_count <= 1;
-		else if( neg_count == 2 ) neg_count <= 0;
+		if( neg_count == 2 ) neg_count <= 0;
 		else neg_count <= neg_count + 1;
 
-	assign clk_out = reset_n && ((pos_count == 2) | (neg_count == 2));
+	assign clk_out = ((pos_count == 2) | (neg_count == 2));
 endmodule
 
 module soc_65xx #(

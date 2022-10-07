@@ -37,17 +37,11 @@ void main() {
         txs
     }
 
-    // reset ACIA
-    ACIA->CTRL = 0x03;
-
     *(&a) = 0x1234;
 
     ++a;
 
     if (a == 0x1235) a = 0;
-
-    // normal operation
-    ACIA->CTRL = 0x00;
 
     //acia_tx_chr('H');
     //acia_tx_chr('E');

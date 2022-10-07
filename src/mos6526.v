@@ -93,7 +93,7 @@ localparam TDW = $clog2(tod_cnt);
 reg tod;
 reg [TDW-1:0] tod_counter;
 
-always @(posedge clk or negedge reset_n)
+always @(posedge clk)
 begin
   if(~reset_n)
   begin
@@ -263,7 +263,6 @@ wire [15:0] newTimerBVal = countB3 ? (timer_b - 1'b1) : timer_b;
 wire timerBoverflow = ~|newTimerBVal & countB2;
 
 always @(posedge clk) begin
-
   if (~reset_n) begin
     tb_lo          <= 8'hff;
     tb_hi          <= 8'hff;
