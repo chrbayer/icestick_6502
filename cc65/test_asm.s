@@ -7,6 +7,12 @@
 .segment  "CODE"
 
 .proc _test_asm: near
+        lda     #$12
+        ldx     #$34
+        ldy     #$56
+        ldz     #$78
+        map
+        eom
         dew     value16
         inw     value16
         neg

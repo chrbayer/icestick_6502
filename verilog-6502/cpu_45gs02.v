@@ -98,6 +98,9 @@ wire [7:0] PCL = PC[7:0];
 
 reg NMI_edge = 0;       // captured NMI edge
 
+wire interrupt;
+assign interrupt = ((~I & ~IRQ_n) | NMI_edge) & ~mapping;
+
 reg [2:0] regsel;                       // Select A, X, Y or S register
 wire [7:0] regfile = regsel == SEL_SPL ? SPL : regsel == SEL_SPH ? SPH : AXYZB[regsel];    // Selected register output
 
@@ -178,6 +181,10 @@ reg adc_bcd;            // ALU should do BCD style carry
 reg adj_bcd;            // results should be BCD adjusted
 reg [1:0]quad_state;    // quad detection state
 reg [1:0]qr_counter;    // quad read counter
+
+reg [15:0]lower_bank;   // lower bank configuration register
+reg [15:0]upper_bank;   // upper bank configuration register
+reg mapping;            // mapping on-going (IRQ and NMI blocked), EOM to clear
 
 `ifdef PRESYNC
 reg presync;            // Instruction can be handled in DECODE state
@@ -400,7 +407,7 @@ localparam QUADC = 2'd3;
  */
 always @*
     casez( state )
-        DECODE:         if( (~I & ~IRQ_n) | NMI_edge )
+        DECODE:         if( interrupt )
                             PC_temp = { ABH, ABL };
                         else
                             PC_temp = PC;
@@ -428,7 +435,7 @@ always @*
  */
 always @*
     casez( state )
-        DECODE:         if( (~I & ~IRQ_n) | NMI_edge )
+        DECODE:         if( interrupt )
                             PC_inc = 0;
                         else
                             PC_inc = 1;
@@ -1224,8 +1231,7 @@ always @(posedge clk)
             IRHOLD_valid <= 0;
     end
 
-assign IR = (~IRQ_n & ~I) | NMI_edge ? 8'h00 :
-                     IRHOLD_valid ? IRHOLD : DIMUX;
+assign IR = interrupt ? 8'h00 : IRHOLD_valid ? IRHOLD : DIMUX;
 
 
 always @(posedge clk)
@@ -1301,7 +1307,7 @@ always @(posedge clk)
                 8'b???0_1010:   state <= REG;   // <shift> A, TXA, DEX, ...  NOP
                 8'b0???_1011:   state <= REG;   // TSY, DEZ, ...
                 8'b0?00_001?:   state <= REG;   // NEG, ASR, CLE, SEE
-                8'b0101_1100:   state <= ABS0;  // AUG
+                8'b0101_1100:   state <= REG;   // MAP
             endcase
             /* verilator lint_on CASEOVERLAP */
 
@@ -1960,7 +1966,7 @@ always @(posedge clk)
 
 always @(posedge clk)
     if( state == DECODE && RDY )
-        casez( IR  )
+        casez( IR )
             8'b01000010:    // NEG A
                             if ( quad_state == QUAD0 || quad_state == QUADC ) quad_state <= QUAD1;
                             else if ( quad_state == QUAD1 ) quad_state <= QUAD2;
@@ -1979,6 +1985,37 @@ always @(posedge clk)
                             else quad_state <= QUAD0;
 
             default:        quad_state <= QUAD0;
+        endcase
+
+
+always @(posedge clk)
+    if( ~reset_n || state == RESET )
+    begin
+        lower_bank = { 4'b000, 12'h000 };
+        upper_bank = { 4'b000, 12'h000 };
+    end
+    else if( state == DECODE && RDY )
+        casez( IR )
+            8'b01011100:    // MAP
+                            begin
+                                lower_bank = { dst_reg == SEL_X ? AO : AXYZB[SEL_X], dst_reg == SEL_A ? AO : AXYZB[SEL_A] };
+                                upper_bank = { dst_reg == SEL_Z ? AO : AXYZB[SEL_Z], dst_reg == SEL_Y ? AO : AXYZB[SEL_Y] };
+                            end
+
+            default: ;
+        endcase
+
+always @(posedge clk)
+    if( ~reset_n || state == RESET ) mapping <= 1'b0;
+    else if( state == DECODE && RDY )
+        casez( IR )
+            8'b01011100:    // MAP
+                            mapping <= 1'b1;
+
+            8'b11101010:    // EOM
+                            mapping <= 1'b0;
+
+            default: ;
         endcase
 
 

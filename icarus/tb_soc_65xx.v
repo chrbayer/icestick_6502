@@ -82,7 +82,7 @@ module tb_soc_65xx;
     end
 
     // Unit under test
-    soc_65xx (#
+    soc_65xx #(
 		.clk_freq(clk_freq),
 		.periph_freq(periph_freq),
 		.baudrate(baudrate)
