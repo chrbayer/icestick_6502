@@ -13,7 +13,7 @@
 module soc_65xx #(
 	parameter clk_freq    	= 16000000,
 	parameter periph_freq 	= 4000000,
-	parameter baudrate		= 9600
+	parameter baudrate		= 115200
 ) (
     input clk,              // SOC System clock
     input reset_n,          // Low-true reset
@@ -67,14 +67,14 @@ module soc_65xx #(
 	reg pclk;
 	reg [PCW-1:0] pclk_counter;
 
-	always @(posedge clk or negedge reset_n)
+	always @(posedge clk)
 	begin
 		if(~reset_n)
 		begin
 			pclk <= 0;
 			pclk_counter <= 0;
 		end
-		else if(pclk_counter == pclk_cnt[PCW-1:0])
+		else if(pclk_counter == (pclk_cnt-1))
 		begin
 			pclk <= 1;
 			pclk_counter <= 0;

@@ -3,9 +3,9 @@
 
 module acia #(
   	// default peripheral clock 4MHz
-  	parameter clk_freq = 4000000,
+  	parameter clk_freq = 3333333,
 	// default baudrate
-	parameter baudrate = 9600
+	parameter baudrate = 115200
 ) (
 	input clk,				// system clock
 	input pclk,				// peripheral clock
@@ -23,6 +23,7 @@ module acia #(
 	// generate tx_start signal on write to register 1
 	wire tx_start = ~cs_n & rs & ~we_n;
 	reg tx_start_buf;
+	reg [7:0] din_buf;
 
 	// load control register
 	reg [1:0] counter_divide_select, tx_start_control;
@@ -82,7 +83,11 @@ module acia #(
 		end
 		else
 		begin
-			if(tx_start) tx_start_buf <= 1'b1;
+			if(tx_start)
+			begin
+				tx_start_buf <= 1'b1;
+				din_buf <= din;
+			end
 			else if(tx_busy) tx_start_buf <= 1'b0;
 			if(pclk)
 			begin
@@ -132,13 +137,13 @@ module acia #(
 		.sym_rate(baudrate)
 	)
 	my_rx (
-		.clk(clk),				// system clock
-		.pclk(pclk),			// peripheral clock
-		.reset_n(acia_rst_n), 	// system reset
-		.rx_serial(rx),		    // raw serial input
-		.rx_dat(rx_dat),        // received byte
-		.rx_stb(rx_stb),        // received data available
-		.rx_err(rx_err)         // received data error
+		.clk(clk),					// system clock
+		.pclk(pclk),				// peripheral clock
+		.reset_n(acia_rst_n), 		// system reset
+		.rx_serial(rx),		    	// raw serial input
+		.rx_dat(rx_dat),        	// received byte
+		.rx_stb(rx_stb),        	// received data available
+		.rx_err(rx_err)         	// received data error
 	);
 
 	// Transmitter
@@ -147,13 +152,13 @@ module acia #(
 		.sym_rate(baudrate)
 	)
 	my_tx (
-		.clk(clk),				// system clock
-		.pclk(pclk),			// peripheral clock
-		.reset_n(acia_rst_n),	// system reset
-		.tx_dat(din),           	// transmit data byte
+		.clk(clk),					// system clock
+		.pclk(pclk),				// peripheral clock
+		.reset_n(acia_rst_n),		// system reset
+		.tx_dat(din_buf),         	// transmit data byte
 		.tx_start(tx_start_buf),	// trigger transmission
-		.tx_serial(tx),         // tx serial output
-		.tx_busy(tx_busy)       // tx is active (not ready)
+		.tx_serial(tx),         	// tx serial output
+		.tx_busy(tx_busy)       	// tx is active (not ready)
 	);
 
 	// generate IRQ

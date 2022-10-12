@@ -22,7 +22,7 @@ module tb_soc_65xx;
     parameter
         clk_freq    = 16000000,
         periph_freq = 4000000,
-        baudrate    = 9600;
+        baudrate    = 115200;
 
     // clock source
     always

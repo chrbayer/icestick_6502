@@ -3,9 +3,9 @@
 
 module acia_tx #(
   	// default peripheral clock 4MHz
-  	parameter clk_freq = 4000000,
+  	parameter clk_freq = 3333333,
 	// default baudrate
-	parameter sym_rate = 9600
+	parameter sym_rate = 115200
 ) (
 	input clk,				// system clock
 	input pclk,				// peripheral clock

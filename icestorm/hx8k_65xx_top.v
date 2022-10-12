@@ -1,7 +1,7 @@
 module hx8k_65xx_top #(
 	parameter clk_freq    	= 13333333,
 	parameter periph_freq 	= 3333333,
-	parameter baudrate		= 9600
+	parameter baudrate		= 115200
 ) (
 `ifndef SIM
 	input  clk,
@@ -193,7 +193,7 @@ endmodule
 module soc_65xx #(
 	parameter clk_freq    	= 13333333,
 	parameter periph_freq 	= 3333333,
-	parameter baudrate		= 9600
+	parameter baudrate		= 115200
 ) (
     input clk,              // SOC System clock
     input reset_n,          // Low-true reset
