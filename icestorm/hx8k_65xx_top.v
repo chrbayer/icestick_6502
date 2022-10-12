@@ -1,5 +1,5 @@
 module hx8k_65xx_top #(
-	parameter clk_freq    	= 16666666,
+	parameter clk_freq    	= 13333333,
 	parameter periph_freq 	= 3333333,
 	parameter baudrate		= 9600
 ) (
@@ -109,7 +109,11 @@ module hx8k_65xx_top #(
 
 	always @(posedge CLK0)
 	begin
+`ifdef SIM
+		if(reset_cnt != 7'd1)
+`else
 		if(reset_cnt != 7'd126)
+`endif
         begin
             reset_cnt <= reset_cnt + 7'd1;
             reset_n <= 1'b0;
@@ -119,9 +123,9 @@ module hx8k_65xx_top #(
 	end
 
 	// soc
-	wire [15:0] bus_addr;
+	wire [18:0] bus_addr;
 	wire [7:0] bus_do;
-	assign sram_address = { 2'b00, bus_addr };
+	assign sram_address = bus_addr[17:0];
 	assign sram_data_write = { 8'h00, bus_do };
 
 	wire [7:0] gpio_a_i, gpio_a_o;
@@ -187,7 +191,7 @@ module clk_div3 (clk, clk_out);
 endmodule
 
 module soc_65xx #(
-	parameter clk_freq    	= 16666666,
+	parameter clk_freq    	= 13333333,
 	parameter periph_freq 	= 3333333,
 	parameter baudrate		= 9600
 ) (
@@ -198,7 +202,7 @@ module soc_65xx #(
 	input IRQ_n,
 	input NMI_n,
 
-	output wire [15:0] bus_addr,
+	output wire [18:0] bus_addr,
 	output wire [7:0] bus_do,
 	input [7:0] bus_di,
 	output wire bus_read,
@@ -225,13 +229,16 @@ module soc_65xx #(
 
 	// Memory configuration
 	parameter
-		RAMPAGEMIN  = 4'h0,
-		RAMPAGEMAX  = 4'hc,
-		ROMPAGE1 	= 4'he,
-		ROMPAGE2 	= 4'hf,
-		IOPAGE  	= 4'hd,
+		ROMPAGE0	= 8'h0c,
+		ROMPAGE1 	= 8'h0e,
+		ROMPAGE2 	= 8'h0f,
+		IOPAGE  	= 8'h0d,
 		CIASUBPAGE	= 6'h00,
 		ACIASUBPAGE	= 6'h01;
+
+	parameter
+		LOWER_BANK_CFG = 16'hf800,
+		UPPER_BANK_CFG = 16'h3800;
 
 	// peripheral clock settings
 	localparam pclk_cnt = (clk_freq / periph_freq);
@@ -240,14 +247,14 @@ module soc_65xx #(
 	reg pclk;
 	reg [PCW-1:0] pclk_counter;
 
-	always @(posedge clk or negedge reset_n)
+	always @(posedge clk)
 	begin
 		if(~reset_n)
 		begin
 			pclk <= 0;
 			pclk_counter <= 0;
 		end
-		else if(pclk_counter == pclk_cnt[PCW-1:0])
+		else if(pclk_counter == (pclk_cnt-1))
 		begin
 			pclk <= 1;
 			pclk_counter <= 0;
@@ -261,14 +268,17 @@ module soc_65xx #(
 
 
     // The 65xx
-    wire [15:0] CPU_AB;
+    wire [19:0] CPU_AB;
     reg [7:0] CPU_DI;
     wire [7:0] CPU_DO;
     wire CPU_WE_n, CPU_IRQ_n;
-    cpu_45gs02 ucpu (
+     cpu_45gs02 #(
+		.LOWER_BANK_CFG(LOWER_BANK_CFG),
+		.UPPER_BANK_CFG(UPPER_BANK_CFG)
+	) ucpu (
         .clk(clk),
         .reset_n(reset_n),
-        .AB(CPU_AB),
+        .eAB(CPU_AB),
         .DI(CPU_DI),
         .DO(CPU_DO),
         .WE_n(CPU_WE_n),
@@ -278,15 +288,15 @@ module soc_65xx #(
     );
 
 	// address decode
-	wire pFlash = (CPU_AB[15:12] == ROMPAGE1 || CPU_AB[15:12] == ROMPAGE2) ? 1'b1 : 1'b0;
-	wire pIo = (CPU_AB[15:12] == IOPAGE) ? 1'b1 : 1'b0;
-	wire pRam = (CPU_AB[15:12] >= RAMPAGEMIN && CPU_AB[15:12] <= RAMPAGEMAX) ? 1'b1 : 1'b0;
+	wire pFlash = (CPU_AB[19:12] == ROMPAGE1 || CPU_AB[19:12] == ROMPAGE2) ? 1'b1 : 1'b0;
+	wire pIo = (CPU_AB[19:12] == IOPAGE) ? 1'b1 : 1'b0;
+	wire pRam = CPU_AB[19];
 
 	wire [5:0] ios = CPU_AB[11:6];
 
 	assign bus_read = pRam & CPU_WE_n;
 	assign bus_write = pRam & ~CPU_WE_n;
-	assign bus_addr = CPU_AB;
+	assign bus_addr = CPU_AB[18:0];
 	assign bus_do = CPU_DO;
 
 	// CIA @ page d0-df
@@ -349,11 +359,11 @@ module soc_65xx #(
 		rom_do <= rom_mem[CPU_AB[12:0]];
 
 	// data mux
-	reg [3:0] mux_sel;
+	reg [7:0] mux_sel;
 	reg [5:0] sec_sel;
 	always @(posedge clk)
 		begin
-			mux_sel <= CPU_AB[15:12];
+			mux_sel <= CPU_AB[19:12];
 			sec_sel <= CPU_AB[11:6];
 		end
 	always @*

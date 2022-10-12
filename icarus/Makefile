@@ -41,26 +41,26 @@ all: $(TOP).lxt
 $(TOP).lxt: $(TOP)
 	make -C ../cc65
 	cp ../cc65/rom.hex .
-	./$(TOP) -lxt
+	./$(TOP) -lxt2-space
 
 $(TOP): tb_soc_65xx.v $(SOURCES)
 	$(VLOG) -D CPU_$(CPU) -D icarus -D SIM -o $(TOP) tb_soc_65xx.v $(SOURCES)
 
 tb_soc_6502_verification: tb_soc_65xx.v $(SOURCES)
 	$(VLOG) -D CPU_$(CPU) -D icarus -D SIM -D VERIFICATION -D VERIFICATION_6502 -o tb_soc_6502_verification tb_soc_65xx.v $(SOURCES)
-	./tb_soc_6502_verification -lxt
+	./tb_soc_6502_verification -lxt2-space
 
 tb_soc_65C02_verification: tb_soc_65xx.v $(SOURCES)
 	$(VLOG) -D CPU_$(CPU) -D icarus -D SIM -D VERIFICATION -D VERIFICATION_65C02 -o tb_soc_65C02_verification tb_soc_65xx.v $(SOURCES)
-	./tb_soc_65C02_verification -lxt
+	./tb_soc_65C02_verification -lxt2-space
 
 tb_soc_65C02_decimal_test: tb_soc_65xx.v $(SOURCES)
 	$(VLOG) -D CPU_$(CPU) -D icarus -D SIM -D VERIFICATION -D DECIMAL_TEST_65C02 -o tb_soc_65C02_decimal_test tb_soc_65xx.v $(SOURCES)
-	./tb_soc_65C02_decimal_test -lxt
+	./tb_soc_65C02_decimal_test -lxt2-space
 
 tb_soc_65CE02_opcodes_test: tb_soc_65xx.v $(SOURCES)
 	$(VLOG) -D CPU_$(CPU) -D icarus -D SIM -D VERIFICATION -D VERIFICATION_65CE02 -o tb_soc_65CE02_opcodes_test tb_soc_65xx.v $(SOURCES)
-	./tb_soc_65CE02_opcodes_test -lxt
+	./tb_soc_65CE02_opcodes_test -lxt2-space
 
 lint:
 	$(VERILATOR) --lint-only -DCPU_$(CPU) $(SOURCES)

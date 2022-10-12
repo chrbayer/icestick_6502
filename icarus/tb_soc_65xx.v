@@ -20,7 +20,7 @@ module tb_soc_65xx;
 	wire cnt_out;
 
     parameter
-        clk_freq    = 32000000,
+        clk_freq    = 16000000,
         periph_freq = 4000000,
         baudrate    = 9600;
 

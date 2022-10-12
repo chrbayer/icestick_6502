@@ -36,10 +36,13 @@
 /* `define PRESYNC */
 
 
-module cpu_45gs02 (
+module cpu_45gs02 #(
+    parameter LOWER_BANK_CFG = 16'hf800,
+    parameter UPPER_BANK_CFG = 16'h3800
+)(
     input clk,              // CPU clock
     input reset_n,          // reset signal
-    output reg [15:0] AB,   // address bus
+    output wire [19:0] eAB, // 20 bit address bus
     input [7:0] DI,         // data in, read bus
     output reg [7:0] DO,    // data out, write bus
     output reg WE_n,        // write enable
@@ -95,6 +98,9 @@ reg  CI;                // Carry In
 wire CO;                // Carry Out
 wire [7:0] PCH = PC[15:8];
 wire [7:0] PCL = PC[7:0];
+
+reg [15:0] AB;
+assign eAB = { (bank_mask & (1 << AB[15:13])) != 8'd0 ? AB[15] ? upper_bank[11:0] : lower_bank[11:0] : 12'h000, 8'h0 } + { 4'h0, AB };
 
 reg NMI_edge = 0;       // captured NMI edge
 
@@ -185,6 +191,8 @@ reg [1:0]qr_counter;    // quad read counter
 reg [15:0]lower_bank;   // lower bank configuration register
 reg [15:0]upper_bank;   // upper bank configuration register
 reg mapping;            // mapping on-going (IRQ and NMI blocked), EOM to clear
+wire [7:0]bank_mask;    // mask for which segments an offset needs to be applied
+assign bank_mask = { upper_bank[15:12], lower_bank[15:12] };
 
 `ifdef PRESYNC
 reg presync;            // Instruction can be handled in DECODE state
@@ -1967,20 +1975,20 @@ always @(posedge clk)
 always @(posedge clk)
     if( state == DECODE && RDY )
         casez( IR )
-            8'b01000010:    // NEG A
+            8'b0100_0010:   // NEG A
                             if ( quad_state == QUAD0 || quad_state == QUADC ) quad_state <= QUAD1;
                             else if ( quad_state == QUAD1 ) quad_state <= QUAD2;
                             else quad_state <= QUADC;
 
-            8'b???10010,    // (BP), Z
-            8'b???0?101,    // BP, ABS
-            8'b0????110,    // ASL/LSR/ROL/ROR
-            8'b11???110,    // DEC/INC
-            8'b00??1010,    // ASL A/ROL A/INC A/DEC A
-            8'b0010?100,    // BIT
-            8'b010?0100,    // ASR
-            8'b01?01010,    // LSR A/ROR A
-            8'b01000011:    // ASR A
+            8'b???1_0010,   // (BP), Z
+            8'b???0_?101,   // BP, ABS
+            8'b0???_?110,   // ASL/LSR/ROL/ROR
+            8'b11??_?110,   // DEC/INC
+            8'b00??_1010,   // ASL A/ROL A/INC A/DEC A
+            8'b0010_?100,   // BIT
+            8'b010?_0100,   // ASR
+            8'b01?0_1010,   // LSR A/ROR A
+            8'b0100_0011:   // ASR A
                             if ( quad_state == QUAD2 ) quad_state <= QUADC;
                             else quad_state <= QUAD0;
 
@@ -1991,28 +1999,20 @@ always @(posedge clk)
 always @(posedge clk)
     if( ~reset_n || state == RESET )
     begin
-        lower_bank = { 4'b000, 12'h000 };
-        upper_bank = { 4'b000, 12'h000 };
+        mapping <= 1'b0;
+        lower_bank <= { LOWER_BANK_CFG };
+        upper_bank <= { UPPER_BANK_CFG };
     end
     else if( state == DECODE && RDY )
         casez( IR )
-            8'b01011100:    // MAP
+            8'b0101_1100:   // MAP
                             begin
-                                lower_bank = { dst_reg == SEL_X ? AO : AXYZB[SEL_X], dst_reg == SEL_A ? AO : AXYZB[SEL_A] };
-                                upper_bank = { dst_reg == SEL_Z ? AO : AXYZB[SEL_Z], dst_reg == SEL_Y ? AO : AXYZB[SEL_Y] };
+                                mapping <= 1'b1;
+                                lower_bank <= { dst_reg == SEL_X ? AO : AXYZB[SEL_X], dst_reg == SEL_A ? AO : AXYZB[SEL_A] };
+                                upper_bank <= { dst_reg == SEL_Z ? AO : AXYZB[SEL_Z], dst_reg == SEL_Y ? AO : AXYZB[SEL_Y] };
                             end
 
-            default: ;
-        endcase
-
-always @(posedge clk)
-    if( ~reset_n || state == RESET ) mapping <= 1'b0;
-    else if( state == DECODE && RDY )
-        casez( IR )
-            8'b01011100:    // MAP
-                            mapping <= 1'b1;
-
-            8'b11101010:    // EOM
+            8'b1110_1010:   // EOM
                             mapping <= 1'b0;
 
             default: ;

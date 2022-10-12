@@ -1,8 +1,17 @@
 // tst_6502.v - test 6502 core
 // 02-11-19 E. Brombaugh
 
+`ifdef CPU_6502
+    `define NO_BANK_SWITCHING
+`elsif CPU_65C02
+    `define NO_BANK_SWITCHING
+`elsif CPU_65CE02
+    `define NO_BANK_SWITCHING
+`endif
+
+
 module soc_65xx #(
-	parameter clk_freq    	= 32000000,
+	parameter clk_freq    	= 16000000,
 	parameter periph_freq 	= 4000000,
 	parameter baudrate		= 9600
 ) (
@@ -33,12 +42,23 @@ module soc_65xx #(
 
 	// Memory configuration
 	parameter
+`ifndef NO_BANK_SWITCHING
+		ROMPAGE0	= 8'h0c,
+		ROMPAGE1 	= 8'h0e,
+		ROMPAGE2 	= 8'h0f,
+		IOPAGE  	= 8'h0d,
+`else
 		ROMPAGE0	= 4'hc,
 		ROMPAGE1 	= 4'he,
 		ROMPAGE2 	= 4'hf,
 		IOPAGE  	= 4'hd,
+`endif
 		CIASUBPAGE	= 6'h00,
 		ACIASUBPAGE	= 6'h01;
+
+	parameter
+		LOWER_BANK_CFG = 16'hf800,
+		UPPER_BANK_CFG = 16'h3800;
 
 `ifndef VERIFICATION
 	localparam pclk_cnt = (clk_freq / periph_freq);
@@ -68,7 +88,11 @@ module soc_65xx #(
 `endif
 
     // The 65xx
+`ifndef NO_BANK_SWITCHING
+    wire [19:0] CPU_AB;
+`else
     wire [15:0] CPU_AB;
+`endif
     reg [7:0] CPU_DI;
     wire [7:0] CPU_DO;
     wire CPU_WE_n, CPU_IRQ_n;
@@ -79,13 +103,23 @@ module soc_65xx #(
 `elsif CPU_65CE02
     cpu_65ce02 ucpu (
 `elsif CPU_45GS02
-    cpu_45gs02 ucpu (
+    cpu_45gs02 #(
+		.LOWER_BANK_CFG(LOWER_BANK_CFG),
+		.UPPER_BANK_CFG(UPPER_BANK_CFG)
+	) ucpu (
 `else
-    cpu_45gs02 ucpu (
+    cpu_45gs02 #(
+		.LOWER_BANK_CFG(LOWER_BANK_CFG),
+		.UPPER_BANK_CFG(UPPER_BANK_CFG)
+	) ucpu (
 `endif
         .clk(clk),
         .reset_n(reset_n),
+`ifndef NO_BANK_SWITCHING
+        .eAB(CPU_AB),
+`else
         .AB(CPU_AB),
+`endif
         .DI(CPU_DI),
         .DO(CPU_DO),
         .WE_n(CPU_WE_n),
@@ -95,20 +129,38 @@ module soc_65xx #(
     );
 
 	// address decode
+`ifndef NO_BANK_SWITCHING
+	wire pFlash = (CPU_AB[19:12] == ROMPAGE1 || CPU_AB[19:12] == ROMPAGE2) ? 1'b1 : 1'b0;
+	wire pIo = (CPU_AB[19:12] == IOPAGE) ? 1'b1 : 1'b0;
+	wire pRam = CPU_AB[19];
+`else
 	wire pFlash = (CPU_AB[15:12] == ROMPAGE1 || CPU_AB[15:12] == ROMPAGE2) ? 1'b1 : 1'b0;
 	wire pIo = (CPU_AB[15:12] == IOPAGE) ? 1'b1 : 1'b0;
 	wire pRam = ~pIo & ~pFlash;
+`endif
 
 	wire [5:0] ios = CPU_AB[11:6];
 
 	// RAM @ pages 00-cf
+`ifndef NO_BANK_SWITCHING
+	reg [7:0] ram_mem [0:524287];
+`else
 	reg [7:0] ram_mem [0:49151];
+`endif
 	reg [7:0] ram_do;
 	always @(posedge clk)
 		if((CPU_WE_n == 1'b0) && (pRam == 1'b1))
+`ifndef NO_BANK_SWITCHING
+			ram_mem[CPU_AB[18:0]] <= CPU_DO;
+`else
 			ram_mem[CPU_AB[15:0]] <= CPU_DO;
+`endif
 	always @(posedge clk)
+`ifndef NO_BANK_SWITCHING
+		ram_do <= ram_mem[CPU_AB[18:0]];
+`else
 		ram_do <= ram_mem[CPU_AB[15:0]];
+`endif
 
 `ifndef VERIFICATION
 	// CIA @ page d0-df
@@ -208,11 +260,19 @@ module soc_65xx #(
 `endif
 
 	// data mux
+`ifndef NO_BANK_SWITCHING
+	reg [7:0] mux_sel;
+`else
 	reg [3:0] mux_sel;
+`endif
 	reg [5:0] sec_sel;
 	always @(posedge clk)
 		begin
+`ifndef NO_BANK_SWITCHING
+			mux_sel <= CPU_AB[19:12];
+`else
 			mux_sel <= CPU_AB[15:12];
+`endif
 			sec_sel <= CPU_AB[11:6];
 		end
 	always @*
