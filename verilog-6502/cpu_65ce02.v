@@ -588,10 +588,10 @@ always @(posedge clk)
 
 always @(posedge clk)
     if( state == BRA0B ) ADL <= ADD;
-    else if ( state == JSR1 ) begin
-        if ( bsr | ind_x_jsr ) ADL <= ADD;
+    else if( state == JSR1 ) begin
+        if( bsr | ind_x_jsr ) ADL <= ADD;
     end
-    else if ( state == JSR0 || state == RTS1 ) ADL <= DIMUX;
+    else if( state == JSR0 || state == RTS1 ) ADL <= DIMUX;
 
 always @(posedge clk)
     if( state == JSR0 || state == BRA0 ) ADH <= PCH;
@@ -1449,7 +1449,7 @@ always @(posedge clk)
 
 always @(posedge clk)
     if( state == DECODE && RDY )
-        casez( IR )             // DMB: Checked for 65C02 NOP collisions
+        casez( IR )
             8'b0???_?110,   // ASL, ROL, LSR, ROR
             8'b000?_?100,   // TSB/TRB
             8'b????_0111,   // SMB/RMB

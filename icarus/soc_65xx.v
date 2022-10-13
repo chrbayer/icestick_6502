@@ -74,7 +74,7 @@ module soc_65xx #(
 			pclk <= 0;
 			pclk_counter <= 0;
 		end
-		else if(pclk_counter == (pclk_cnt-1))
+		else if(pclk_counter == (pclk_cnt[PCW-1:0]-1))
 		begin
 			pclk <= 1;
 			pclk_counter <= 0;

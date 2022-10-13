@@ -57,6 +57,7 @@ module cpu_45gs02 #(
  */
 
 reg  [15:0] PC;         // Program Counter
+reg  [15:0] AB;         // Internal Address Bus
 reg  [7:0] ABL;         // Address Bus Register LSB
 reg  [7:0] ABH;         // Address Bus Register MSB
 reg  [7:0] ADL;         // Address Bus Data Register LSB
@@ -99,9 +100,6 @@ wire CO;                // Carry Out
 wire [7:0] PCH = PC[15:8];
 wire [7:0] PCL = PC[7:0];
 
-reg [15:0] AB;
-assign eAB = { (bank_mask & (1 << AB[15:13])) != 8'd0 ? AB[15] ? upper_bank[11:0] : lower_bank[11:0] : 12'h000, 8'h0 } + { 4'h0, AB };
-
 reg NMI_edge = 0;       // captured NMI edge
 
 wire interrupt;
@@ -142,7 +140,7 @@ wire [7:0] P = { N, V, E, 1'b1, D, I, Z, C };
  * instruction decoder/sequencer
  */
 
-reg [5:0] state = RESET;
+reg [6:0] state = RESET;
 
 /*
  * control signals
@@ -185,8 +183,9 @@ reg [3:0] pre_op;
 reg [3:0] alu_op;       // Current cycle ALU operation
 reg adc_bcd;            // ALU should do BCD style carry
 reg adj_bcd;            // results should be BCD adjusted
-reg [1:0]quad_state;    // quad detection state
-reg [1:0]qr_counter;    // quad read counter
+reg [2:0] quad_state;   // quad detection state
+reg [1:0] qr_counter;   // quad read counter
+reg [1:0] long_state;   // 32 bit indirect memory access detection state
 
 reg [15:0]lower_bank;   // lower bank configuration register
 reg [15:0]upper_bank;   // upper bank configuration register
@@ -257,74 +256,75 @@ localparam OP_A   = 4'b1111;
  * kept in separate flops.
  */
 
-localparam RESET  = 6'd0;  // During reset and initial state
-localparam ABS0   = 6'd1;  // ABS     - fetch LSB
-localparam ABS1   = 6'd2;  // ABS     - fetch MSB
-localparam ABSX0  = 6'd3;  // ABS, X  - fetch LSB and send to ALU (+X)
-localparam ABSX1  = 6'd4;  // ABS, X  - fetch MSB and send to ALU (+Carry)
-localparam BRA0   = 6'd5;  // Branch  - fetch offset and send to ALU (+PCL)
-localparam BRA0B  = 6'd6;  // Branch  - fetch offset and send to ALU (+PCH)
-localparam BRA1   = 6'd7;  // Branch  - fetch opcode
-localparam BRK0   = 6'd8;  // BRK/IRQ - push PCH, decrement SP
-localparam BRK1   = 6'd9;  // BRK/IRQ - push PCL, decrement SP
-localparam BRK2   = 6'd10; // BRK/IRQ - push P, decrement SP
-localparam BRK3   = 6'd11; // BRK/IRQ - fetch @ fffe
-localparam DECODE = 6'd12; // IR is valid, decode instruction, and write prev reg
+localparam RESET  = 7'd0;  // During reset and initial state
+localparam ABS0   = 7'd1;  // ABS     - fetch LSB
+localparam ABS1   = 7'd2;  // ABS     - fetch MSB
+localparam ABSX0  = 7'd3;  // ABS, X  - fetch LSB and send to ALU (+X)
+localparam ABSX1  = 7'd4;  // ABS, X  - fetch MSB and send to ALU (+Carry)
+localparam BRA0   = 7'd5;  // Branch  - fetch offset and send to ALU (+PCL)
+localparam BRA0B  = 7'd6;  // Branch  - fetch offset and send to ALU (+PCH)
+localparam BRA1   = 7'd7;  // Branch  - fetch opcode
+localparam BRK0   = 7'd8;  // BRK/IRQ - push PCH, decrement SP
+localparam BRK1   = 7'd9;  // BRK/IRQ - push PCL, decrement SP
+localparam BRK2   = 7'd10; // BRK/IRQ - push P, decrement SP
+localparam BRK3   = 7'd11; // BRK/IRQ - fetch @ fffe
+localparam DECODE = 7'd12; // IR is valid, decode instruction, and write prev reg
 `ifdef PRESYNC
 localparam REG    = DECODE;
 `else
-localparam REG    = 6'd13; // Read register for reg-reg transfers`endif
+localparam REG    = 7'd13; // Read register for reg-reg transfers`endif
 `endif
-localparam FETCH  = 6'd14; // fetch next opcode, and perform prev ALU op
-localparam INDX0  = 6'd15; // (BP,X)  - fetch BP address, and send to ALU (+X)
-localparam INDX1  = 6'd16; // (BP,X)  - fetch LSB at BP+X, calculate BP+X+1
-localparam INDX2  = 6'd17; // (BP,X)  - fetch MSB at BP+X+1
-localparam INDX3  = 6'd18; // (BP,X)  - fetch data
-localparam INDY0  = 6'd19; // (BP),Y/Z  - fetch BP address, and send BP to ALU (+1)
-localparam INDY1  = 6'd20; // (BP),Y/Z  - fetch at BP+1, and send LSB to ALU (+Y/Z)
-localparam INDY2  = 6'd21; // (BP),Y/Z  - fetch data MSB and adjust to Carry
-localparam JMP0   = 6'd22; // JMP     - fetch PCL and hold
-localparam JMP1   = 6'd23; // JMP     - fetch PCH
-localparam JMPI0  = 6'd24; // JMP IND - fetch LSB and send to ALU for delay (+0)
-localparam JMPI1  = 6'd25; // JMP IND - fetch MSB, proceed with JMP0 state
-localparam JSR0   = 6'd26; // JSR     - fetch LSB in ADL
-localparam JSR1   = 6'd27; // JSR     - fetch MSB, push PCH, decrement SP
-localparam JSR2   = 6'd28; // JSR     - push PCL, decrement SP, setup PC to new address
-localparam PULL0  = 6'd29; // PLP/PLA/PLX/PLY/PLZ - setup address for SP+1, increment SP
-localparam PULL1  = 6'd30; // PLP/PLA/PLX/PLY/PLZ - fetch data
-localparam PUSH0  = 6'd31; // PHP/PHA/PHX/PHY/PHZ - push data to SP, decrement SP
-localparam READ   = 6'd32; // Read memory for read/modify/write (INC, DEC, shift)
-localparam RDONLY = 6'd33; // Read memory for BBS/BBR
-localparam RTI0   = 6'd34; // RTI     - read P from stack
-localparam RTI1   = 6'd35; // RTI     - read PCL from stack
-localparam RTS0   = 6'd36; // RTS/RTN - read PCL from stack, store DIMUX for RTN in ALU
-localparam RTS1   = 6'd37; // RTS/RTN - write PCL to ADL, read PCH
-localparam RTS2   = 6'd38; // RTS/RTN - load PC and increment, add value fir RTN to SPL
-localparam RTS3   = 6'd39; // RTN     - Adjust SPH with Carry
-localparam WRITE  = 6'd40; // Write memory for read/modify/write
-localparam BP0    = 6'd41; // Z-page  - fetch BP address
-localparam BPX0   = 6'd42; // BP, X   - fetch BP, and send to ALU (+X)
-localparam JMPIX0 = 6'd43; // JMP (,X)- fetch LSB and send to ALU (+X)
-localparam JMPIX1 = 6'd44; // JMP (,X)- fetch MSB and send to ALU (+Carry)
-localparam SPIND0 = 6'd45; // Fetch offset, add offset to SPL
-localparam SPIND1 = 6'd46; // Fetch SP + offset as LSB
-localparam SPIND2 = 6'd47; // Fetch SP + offset + 1 as MSB, Y to LSB
-localparam PUSHW0 = 6'd48; // Setup address for push on stack
-localparam PUSHW1 = 6'd49; // Get MSB, Push MSB for imm16 push, decrement SP
-localparam PUSHW2 = 6'd50; // Push LSB for imm16 push, decrement SP
-localparam PHWRD0 = 6'd51; // Push MSB for 16 bit PHW a16
-localparam READW0 = 6'd52; // Setup read MSB for read/modify/write 16 bit
-localparam READW1 = 6'd53; // Read MSB for read/modify/write 16 bit
-localparam WRITEW = 6'd54; // Write MSB for read/modify/write 16 bit
-localparam READ1  = 6'd55; // First extra operation during quad read command
-localparam READ2  = 6'd56; // Extra second operation during quad read command
-localparam READ3  = 6'd57; // Extra third operation during quad read command
-localparam REG1   = 6'd58; // First extra operation during quad register command
-localparam REG2   = 6'd59; // Second extra operation during quad register command
-localparam REG3   = 6'd60; // Third extra operation during quad register command
-localparam READQ0 = 6'd61; // Setup read MSB for read/modify/write 16 bit or quad
-localparam READQ1 = 6'd62; // Read MSB for read/modify/write 16 bit or quad
-localparam WRITEQ = 6'd63; // Write MSB for read/modify/write 16 bit or quad
+localparam FETCH  = 7'd14; // fetch next opcode, and perform prev ALU op
+localparam INDX0  = 7'd15; // (BP,X)  - fetch BP address, and send to ALU (+X)
+localparam INDX1  = 7'd16; // (BP,X)  - fetch LSB at BP+X, calculate BP+X+1
+localparam INDX2  = 7'd17; // (BP,X)  - fetch MSB at BP+X+1
+localparam INDX3  = 7'd18; // (BP,X)  - fetch data
+localparam INDY0  = 7'd19; // (BP),Y/Z  - fetch BP address, and send BP to ALU (+1)
+localparam INDY1  = 7'd20; // (BP),Y/Z  - fetch at BP+1, and send LSB to ALU (+Y/Z)
+localparam INDY2  = 7'd21; // (BP),Y/Z  - fetch data MSB and adjust to Carry
+localparam JMP0   = 7'd22; // JMP     - fetch PCL and hold
+localparam JMP1   = 7'd23; // JMP     - fetch PCH
+localparam JMPI0  = 7'd24; // JMP IND - fetch LSB and send to ALU for delay (+0)
+localparam JMPI1  = 7'd25; // JMP IND - fetch MSB, proceed with JMP0 state
+localparam JSR0   = 7'd26; // JSR     - fetch LSB in ADL
+localparam JSR1   = 7'd27; // JSR     - fetch MSB, push PCH, decrement SP
+localparam JSR2   = 7'd28; // JSR     - push PCL, decrement SP, setup PC to new address
+localparam PULL0  = 7'd29; // PLP/PLA/PLX/PLY/PLZ - setup address for SP+1, increment SP
+localparam PULL1  = 7'd30; // PLP/PLA/PLX/PLY/PLZ - fetch data
+localparam PUSH0  = 7'd31; // PHP/PHA/PHX/PHY/PHZ - push data to SP, decrement SP
+localparam READ   = 7'd32; // Read memory for read/modify/write (INC, DEC, shift)
+localparam RDONLY = 7'd33; // Read memory for BBS/BBR
+localparam RTI0   = 7'd34; // RTI     - read P from stack
+localparam RTI1   = 7'd35; // RTI     - read PCL from stack
+localparam RTS0   = 7'd36; // RTS/RTN - read PCL from stack, store DIMUX for RTN in ALU
+localparam RTS1   = 7'd37; // RTS/RTN - write PCL to ADL, read PCH
+localparam RTS2   = 7'd38; // RTS/RTN - load PC and increment, add value fir RTN to SPL
+localparam RTS3   = 7'd39; // RTN     - Adjust SPH with Carry
+localparam WRITE  = 7'd40; // Write memory for read/modify/write
+localparam BP0    = 7'd41; // Z-page  - fetch BP address
+localparam BPX0   = 7'd42; // BP, X   - fetch BP, and send to ALU (+X)
+localparam JMPIX0 = 7'd43; // JMP (,X)- fetch LSB and send to ALU (+X)
+localparam JMPIX1 = 7'd44; // JMP (,X)- fetch MSB and send to ALU (+Carry)
+localparam SPIND0 = 7'd45; // Fetch offset, add offset to SPL
+localparam SPIND1 = 7'd46; // Fetch SP + offset as LSB
+localparam SPIND2 = 7'd47; // Fetch SP + offset + 1 as MSB, Y to LSB
+localparam PUSHW0 = 7'd48; // Setup address for push on stack
+localparam PUSHW1 = 7'd49; // Get MSB, Push MSB for imm16 push, decrement SP
+localparam PUSHW2 = 7'd50; // Push LSB for imm16 push, decrement SP
+localparam PHWRD0 = 7'd51; // Push MSB for 16 bit PHW a16
+localparam READW0 = 7'd52; // Setup read MSB for read/modify/write 16 bit
+localparam READW1 = 7'd53; // Read MSB for read/modify/write 16 bit
+localparam WRITEW = 7'd54; // Write MSB for read/modify/write 16 bit
+localparam READ1  = 7'd55; // First extra operation during quad read command
+localparam READ2  = 7'd56; // Extra second operation during quad read command
+localparam READ3  = 7'd57; // Extra third operation during quad read command
+localparam REG1   = 7'd58; // First extra operation during quad register command
+localparam REG2   = 7'd59; // Second extra operation during quad register command
+localparam REG3   = 7'd60; // Third extra operation during quad register command
+localparam READQ0 = 7'd61; // Setup read MSB for read/modify/write 16 bit or quad
+localparam READQ1 = 7'd62; // Read MSB for read/modify/write 16 bit or quad
+localparam WRITEQ = 7'd63; // Write MSB for read/modify/write 16 bit or quad
+localparam LONG   = 7'd64;
 
 `ifdef SIM
 /*
@@ -400,13 +400,19 @@ always @*
         READQ0: statename = "READQ0";
         READQ1: statename = "READQ1";
         WRITEQ: statename = "WRITEQ";
+        LONG:   statename = "LONG";
     endcase
 `endif
 
-localparam QUAD0 = 2'd0;
-localparam QUAD1 = 2'd1;
-localparam QUAD2 = 2'd2;
-localparam QUADC = 2'd3;
+localparam QUAD0    = 3'd0;
+localparam QUAD1    = 3'd1;
+localparam QUAD2    = 3'd2;
+localparam QUAD2B   = 3'd3;
+localparam QUADC    = 3'd4;
+
+localparam LONG0    = 2'd0;
+localparam LONG1    = 2'd1;
+localparam LONGC    = 2'd2;
 
 
 /*
@@ -565,7 +571,8 @@ always @*
 
         JMPI1:          AB = ind_jsr ? PC : { DIMUX, ADD };
 
-        INDY2,
+        INDY2:          AB = long_state == LONGC ? { ADD, ADL } : { DIMUX + { 7'd0, CO }, ADD };
+
         JMPIX1:         AB = { DIMUX + { 7'd0, CO }, ADD };
 
         ABSX1:          AB = { DIMUX + { 7'd0, CO }, ADD } + ((quad_state == QUADC && shift_right) ? 16'd3 : 16'd0);
@@ -590,6 +597,8 @@ always @*
         INDY1,
         INDX1,
         INDX2:          AB = { AXYZB[SEL_B], ADD };
+
+        LONG:           AB = { ABH, ABL + 8'd1 };
 
         BP0:            AB = { AXYZB[SEL_B], DIMUX } + ((quad_state == QUADC && shift_right) ? 16'd3 : 16'd0);
 
@@ -642,14 +651,16 @@ always @(posedge clk)
  */
 
 always @(posedge clk)
-    if( state == BRA0B ) ADL <= ADD;
-    else if ( state == JSR1 ) begin
-        if ( bsr | ind_x_jsr ) ADL <= ADD;
+    if( state == BRA0B || state == LONG) ADL <= ADD;
+    else if( state == JSR1 ) begin
+        if( bsr | ind_x_jsr ) ADL <= ADD;
     end
-    else if ( state == JSR0 || state == RTS1 ) ADL <= DIMUX;
+    else if( state == JSR0 || state == RTS1 ) ADL <= DIMUX;
 
 always @(posedge clk)
     if( state == JSR0 || state == BRA0 ) ADH <= PCH;
+
+assign eAB = (state == INDY2 || state == READ1 || state == READ2 || state == READ3) && long_state == LONGC ? { DIMUX[3:0] + { 3'd0, CO }, AB } : { (bank_mask & (1 << AB[15:13])) != 8'd0 ? AB[15] ? upper_bank[11:0] : lower_bank[11:0] : 12'h000, 8'h0 } + { 4'h0, AB };
 
 
 /*
@@ -1031,6 +1042,7 @@ always @*
             REG1,
             REG2,
             REG3,
+            LONG,
             INDY2,
             JMPIX1,
             ABSX1:      CI = CO;
@@ -1338,8 +1350,9 @@ always @(posedge clk)
         INDX3:  state <= FETCH;
 
         INDY0:  state <= INDY1;
-        INDY1:  state <= INDY2;
+        INDY1:  state <= long_state == LONGC ? LONG : INDY2;
         INDY2:  state <= quad_state == QUADC ? READ1 : FETCH;
+        LONG:   state <= INDY2;
 
         SPIND0: state <= SPIND1;
         SPIND1: state <= SPIND2;
@@ -1619,7 +1632,7 @@ always @(posedge clk)
 
 always @(posedge clk)
     if( state == DECODE && RDY )
-        casez( IR )             // DMB: Checked for 65C02 NOP collisions
+        casez( IR )
             8'b0???_?110,   // ASL, ROL, LSR, ROR
             8'b000?_?100,   // TSB/TRB
             8'b????_0111,   // SMB/RMB
@@ -1989,10 +2002,28 @@ always @(posedge clk)
             8'b010?_0100,   // ASR
             8'b01?0_1010,   // LSR A/ROR A
             8'b0100_0011:   // ASR A
-                            if ( quad_state == QUAD2 ) quad_state <= QUADC;
+                            if ( quad_state == QUAD2 || quad_state == QUAD2B ) quad_state <= QUADC;
+                            else quad_state <= QUAD0;
+
+            8'b1110_1010:   // NOP
+                            if ( quad_state == QUAD2 ) quad_state <= QUAD2B;
                             else quad_state <= QUAD0;
 
             default:        quad_state <= QUAD0;
+        endcase
+
+
+always @(posedge clk)
+    if( state == DECODE && RDY )
+        casez( IR )
+            8'b1110_1010:   // NOP
+                            long_state <= LONG1;
+
+            8'b???1_0010:   // (BP), Z
+                            if ( long_state == LONG1 ) long_state <= LONGC;
+                            else long_state <= LONG0;
+
+            default:        long_state <= LONG0;
         endcase
 
 

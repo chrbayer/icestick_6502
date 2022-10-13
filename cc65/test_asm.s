@@ -7,6 +7,16 @@
 .segment  "CODE"
 
 .proc _test_asm: near
+        lda     #$20
+        sta     longptr
+        lda     #$00
+        sta     longptr+1
+        sta     longptr+2
+        sta     longptr+3
+        neg
+        neg
+        nop
+        lda     (longptr),z
         lda     #$00
         ldx     #$F8
         ldy     #$00
@@ -197,3 +207,8 @@ value32: .dword $43272376
 value16: .word $4327
 
 indptr:  .word $0000
+
+longptr: .byte $12
+         .byte $34
+         .byte $05
+         .byte $00
