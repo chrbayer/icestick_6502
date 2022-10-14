@@ -7,6 +7,16 @@
 .segment  "CODE"
 
 .proc _test_asm: near
+        ldx     #$01
+        ldy     #$02
+        ldz     #$04
+        neg
+        neg
+        asl
+        ldx     #$00
+        neg
+        neg
+        neg
         lda     #$20
         sta     longptr
         lda     #$00

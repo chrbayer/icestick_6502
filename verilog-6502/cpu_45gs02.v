@@ -33,7 +33,7 @@
  * clock cycles. This reduces the maximum frequency of the design.
  */
 
-/* `define PRESYNC */
+`define PRESYNC
 
 
 module cpu_45gs02 #(
@@ -201,6 +201,8 @@ reg pre_shift;          // doing shift/rotate instruction in DECODE state
 reg pre_rotate;         // doing rotate (no shift) in DECODE state
 reg pre_shift_right;    // Instruction ALU shift/rotate right in DECODE state
 reg pre_arith_shift;    // Instruction ALU shift arithmetic right in DECODE state
+reg pre_quad;           // Instruction quad detected right in DECODE state
+reg pre_neg;            // doing NEG instruction right in DECODE state
 `endif
 
 /*
@@ -613,10 +615,10 @@ always @*
 
 `ifndef PRESYNC
         REG,
+`endif
         REG1,
         REG2,
         REG3,
-`endif
         READ,
         READW1,
         READQ1,
@@ -898,10 +900,10 @@ always @*
             READ3,
 `ifndef PRESYNC
             REG,
+`endif
             REG1,
             REG2,
             REG3,
-`endif
             FETCH:      alu_op = op;
 
             DECODE,
@@ -916,7 +918,7 @@ always @*
 
 always @*
 `ifdef PRESYNC
-    if( presync )
+    if( presync && state == DECODE )
         { alu_shift_right, alu_arith_shift } = { pre_shift_right, pre_arith_shift };
     else if( state == FETCH || state == READ )
 `else
@@ -940,19 +942,19 @@ always @(posedge clk)
 
 always @*
 `ifdef PRESYNC
-    if( presync ) AI = neg ? 8'h00 : pre_src_reg == dst_reg && write_register ? ADD : pre_src_reg == SEL_SPL ? SPL : pre_src_reg == SEL_SPH ? SPH : AXYZB[pre_src_reg];
+    if( presync && state == DECODE ) AI = pre_neg ? 8'h00 : pre_src_reg == dst_reg && write_register ? ADD : pre_src_reg == SEL_SPL ? SPL : pre_src_reg == SEL_SPH ? SPH : AXYZB[pre_src_reg];
     else
 `endif
         casez( state )
 `ifndef PRESYNC
             REG:        AI = neg ? 8'h00 : shift_right && quad_state == QUADC ? AXYZB[SEL_Z] : regfile;
+`endif
 
             REG1:       AI = neg ? 8'h00 : shift_right ? AXYZB[SEL_Y] : AXYZB[SEL_X];
 
             REG2:       AI = neg ? 8'h00 : shift_right ? AXYZB[SEL_X] : AXYZB[SEL_Y];
 
             REG3:       AI = neg ? 8'h00 : shift_right ? AXYZB[SEL_A] : AXYZB[SEL_Z];
-`endif
 
             INDX0,
             JMPIX0,
@@ -996,7 +998,7 @@ always @*
 
 always @*
 `ifdef PRESYNC
-    if( presync ) BI = neg ? pre_src_reg == dst_reg && write_register ? ADD : pre_src_reg == SEL_SPL ? SPL : pre_src_reg == SEL_SPH ? SPH : AXYZB[pre_src_reg] : 8'h00;
+    if( presync && state == DECODE ) BI = pre_neg ? pre_src_reg == dst_reg && write_register ? ADD : pre_src_reg == SEL_SPL ? SPL : pre_src_reg == SEL_SPH ? SPH : AXYZB[pre_src_reg] : 8'h00;
     else
 `endif
         casez( state )
@@ -1007,13 +1009,13 @@ always @*
 
 `ifndef PRESYNC
             REG:        BI = neg ? regfile : 8'h00;
+`endif
 
             REG1:       BI = neg ? AXYZB[SEL_X] : 8'h00;
 
             REG2:       BI = neg ? AXYZB[SEL_Y] : 8'h00;
 
             REG3:       BI = neg ? AXYZB[SEL_Z] : 8'h00;
-`endif
 
             READ:       BI = xmb_ins ? (bit_code[3] ? 8'h01 << bit_code[2:0] : ~(8'h01 << bit_code[2:0])) : (txb_ins ? (trb_ins ? ~regfile : regfile) : 8'h00);
 
@@ -1032,7 +1034,7 @@ always @*
 
 always @*
 `ifdef PRESYNC
-    if( presync ) CI = pre_rotate ? (plp ? ADD[0] : C) : pre_shift ? 0 : pre_inc;
+    if( presync && state == DECODE ) CI = pre_rotate ? (plp ? ADD[0] : C) : pre_shift ? 0 : pre_inc;
     else
 `endif
         casez( state )
@@ -1323,10 +1325,10 @@ always @(posedge clk)
                 8'b1101_1011:   state <= PUSH0; // PHZ
                 8'b?111_1010:   state <= PULL0; // PLX/PLY
                 8'b1111_1011:   state <= PULL0; // PLZ
-                8'b?0?1_1010:   state <= REG;   // <shift> A, TXA, ...
-                8'b???0_1010:   state <= REG;   // <shift> A, TXA, DEX, ...  NOP
-                8'b0???_1011:   state <= REG;   // TSY, DEZ, ...
-                8'b0?00_001?:   state <= REG;   // NEG, ASR, CLE, SEE
+                8'b?0?1_1010:   begin state <= presync & pre_quad ? REG1 : REG; end   // <shift> A, TXA, ...
+                8'b???0_1010:   begin state <= presync & pre_quad ? REG1 : REG; end   // <shift> A, TXA, DEX, ...  NOP
+                8'b0???_1011:   state <= REG;  // TSY, DEZ, ...
+                8'b0?00_001?:   begin state <= presync & pre_quad ? REG1 : REG; end   // NEG, ASR, CLE, SEE
                 8'b0101_1100:   state <= REG;   // MAP
             endcase
             /* verilator lint_on CASEOVERLAP */
@@ -1372,10 +1374,10 @@ always @(posedge clk)
 
 `ifndef PRESYNC
         REG:    state <= quad_state == QUADC ? REG1 : DECODE;
+`endif
         REG1:   state <= REG2;
         REG2:   state <= REG3;
         REG3:   state <= DECODE;
-`endif
 
         RDONLY: state <= bbx_ins ? BRA0 : FETCH;
 
@@ -2012,6 +2014,25 @@ always @(posedge clk)
             default:        quad_state <= QUAD0;
         endcase
 
+`ifdef PRESYNC
+always @*
+    if( state == DECODE && RDY )
+        casez( IR )
+            8'b0100_0010,   // NEG A
+            8'b0???_?110,   // ASL/LSR/ROL/ROR
+            8'b11??_?110,   // DEC/INC
+            8'b00??_1010,   // ASL A/ROL A/INC A/DEC A
+            8'b010?_0100,   // ASR
+            8'b01?0_1010,   // LSR A/ROR A
+            8'b0100_0011:   // ASR A
+                            if ( quad_state == QUAD2 || quad_state == QUAD2B ) pre_quad = 1;
+                            else pre_quad = 0;
+
+            default:        pre_quad = 0;
+        endcase
+    else pre_quad = 0;
+`endif
+
 
 always @(posedge clk)
     if( state == DECODE && RDY )
@@ -2065,9 +2086,7 @@ always @(posedge clk)
         cld <= (IR == 8'hd8);
         sed <= (IR == 8'hf8);
         brk <= (IR == 8'h00);
-`ifndef PRESYNC
         neg <= (IR == 8'h42);
-`endif
         bsr <= (IR == 8'h63);
         rti <= (IR == 8'h40);
         rtn <= (IR == 8'h62);
@@ -2078,8 +2097,8 @@ always @(posedge clk)
 
 `ifdef PRESYNC
 always @*
-    if( IR == 8'h42 ) neg = 1;
-    else neg = 0;
+    if( IR == 8'h42 ) pre_neg = 1;
+    else pre_neg = 0;
 `endif
 
 

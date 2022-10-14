@@ -43,7 +43,7 @@ void main() {
 
     if (a == 0x1235) a = 0;
 
-    acia_tx_chr('H');
+/*  acia_tx_chr('H');
     acia_tx_chr('E');
     acia_tx_chr('L');
     acia_tx_chr('L');
@@ -56,7 +56,7 @@ void main() {
     acia_tx_chr('L');
     acia_tx_chr('D');
     acia_tx_chr('!');
-    acia_tx_chr(0x0a);
+    acia_tx_chr(0x0a);*/
 
     // Configure CIA
     CIA->PORT_B_DDR = 0xC0;
