@@ -942,7 +942,7 @@ always @(posedge clk)
 
 always @*
 `ifdef PRESYNC
-    if( presync && state == DECODE ) AI = pre_neg ? 8'h00 : pre_src_reg == dst_reg && write_register ? ADD : pre_src_reg == SEL_SPL ? SPL : pre_src_reg == SEL_SPH ? SPH : AXYZB[pre_src_reg];
+    if( presync && state == DECODE ) AI = pre_neg ? 8'h00 : shift_right && quad_state == QUADC ? dst_reg == SEL_Z && write_register ? ADD : AXYZB[SEL_Z] : pre_src_reg == dst_reg && write_register ? ADD : pre_src_reg == SEL_SPL ? SPL : pre_src_reg == SEL_SPH ? SPH : AXYZB[pre_src_reg];
     else
 `endif
         casez( state )
@@ -998,7 +998,7 @@ always @*
 
 always @*
 `ifdef PRESYNC
-    if( presync && state == DECODE ) BI = pre_neg ? pre_src_reg == dst_reg && write_register ? ADD : pre_src_reg == SEL_SPL ? SPL : pre_src_reg == SEL_SPH ? SPH : AXYZB[pre_src_reg] : 8'h00;
+    if( presync && state == DECODE ) BI = pre_neg ? shift_right && quad_state == QUADC ? dst_reg == SEL_Z && write_register ? ADD : AXYZB[SEL_Z] : pre_src_reg == dst_reg && write_register ? ADD : pre_src_reg == SEL_SPL ? SPL : pre_src_reg == SEL_SPH ? SPH : AXYZB[pre_src_reg] : 8'h00;
     else
 `endif
         casez( state )
@@ -2060,8 +2060,8 @@ always @(posedge clk)
             8'b0101_1100:   // MAP
                             begin
                                 mapping <= 1'b1;
-                                lower_bank <= { dst_reg == SEL_X ? AO : AXYZB[SEL_X], dst_reg == SEL_A ? AO : AXYZB[SEL_A] };
-                                upper_bank <= { dst_reg == SEL_Z ? AO : AXYZB[SEL_Z], dst_reg == SEL_Y ? AO : AXYZB[SEL_Y] };
+                                lower_bank <= { dst_reg == SEL_X ? ADD : AXYZB[SEL_X], dst_reg == SEL_A ? ADD : AXYZB[SEL_A] };
+                                upper_bank <= { dst_reg == SEL_Z ? ADD : AXYZB[SEL_Z], dst_reg == SEL_Y ? ADD : AXYZB[SEL_Y] };
                             end
 
             8'b1110_1010:   // EOM
