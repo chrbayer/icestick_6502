@@ -8,7 +8,8 @@ SRC =	hx8k_65xx_top.v pll.v sram.v \
 		../verilog-6502/alu_65ce02.v ../verilog-6502/cpu_45gs02.v
 
 # preparing the machine code
-REAL_HEX = rom.hex
+FAKE_HEX = rom.hex
+REAL_HEX = code.hex
 
 # project stuff
 PROJ = hx8k_65xx_top
@@ -23,12 +24,16 @@ NEXTPNR_ARGS = --pre-pack $(SDC) --randomize-seed #--placer sa
 ICEPACK = icepack
 ICETIME = icetime
 ICEPROG = iceprogduino
+ICEBRAM = icebram
 VERILATOR = verilator
 VLOG = iverilog
 
 all: $(PROJ).bin
 
-%.json: $(SRC) $(REAL_HEX)
+$(FAKE_HEX):
+	$(ICEBRAM) -g 8 8192 > $(FAKE_HEX)
+
+%.json: $(SRC) $(FAKE_HEX)
 	$(YOSYS) -p 'synth_ice40 -top $(PROJ) -json $@' $(SRC)
 
 %.asc: %.json $(PIN_DEF)
@@ -36,20 +41,25 @@ all: $(PROJ).bin
 
 $(REAL_HEX):
 	$(MAKE) -C ../kickc/
-	cp ../kickc/$(REAL_HEX) ./$(REAL_HEX)
+	cp ../kickc/$(FAKE_HEX) ./$(REAL_HEX)
 
 assembly:
 	$(MAKE) -C ../assembly/
 	cp ../assembly/$(REAL_HEX) .
 
-%.bin: %.asc
-	$(ICEPACK) $< $@
+%.bin: %.asc $(REAL_HEX)
+	$(ICEBRAM) $(FAKE_HEX) $(REAL_HEX) < $< > temp.asc
+	$(ICEPACK) temp.asc $@
 
 %.rpt: %.asc
 	$(ICETIME) -d $(DEVICE) -mtr $@ $<
 
 prog: $(PROJ).bin
 	$(ICEPROG) $<
+
+recode:
+	rm -f $(REAL_HEX) $(PROJ).bin
+	$(MAKE) prog
 
 lint: $(SRC)
 	$(VERILATOR) --lint-only -Wall --top-module $(PROJ) $(SRC)
@@ -59,8 +69,8 @@ tb_hx8k_65xx_top: $(SRC) $(REAL_HEX)
 	./tb_hx8k_65xx_top -lxt2-space
 
 clean:
-	rm -f $(PROJ).json $(PROJ).asc $(PROJ).rpt $(PROJ).bin $(PROJ).hex rom.hex tb_hx8k_65xx_top *.vcd *.lxt
+	rm -f $(PROJ).json $(PROJ).asc temp.asc $(PROJ).rpt $(PROJ).bin $(PROJ).hex code.hex rom.hex
 	$(MAKE) clean -C ../kickc/
 
 .SECONDARY:
-.PHONY: all prog clean
+.PHONY: all prog recode clean

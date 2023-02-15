@@ -29,7 +29,7 @@ module alu_6502 (
 	output reg CO,
 	output V,
 	output Z,
-	output N,
+	output reg N,
 	output reg HC,
 	input RDY
 );

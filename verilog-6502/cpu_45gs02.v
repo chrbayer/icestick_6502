@@ -326,7 +326,7 @@ localparam REG3   = 7'd60; // Third extra operation during quad register command
 localparam READQ0 = 7'd61; // Setup read MSB for read/modify/write 16 bit or quad
 localparam READQ1 = 7'd62; // Read MSB for read/modify/write 16 bit or quad
 localparam WRITEQ = 7'd63; // Write MSB for read/modify/write 16 bit or quad
-localparam LONG   = 7'd64;
+localparam LONG   = 7'd64; // Generation of exra MSBs for direkt memory access > 16 bit
 
 `ifdef SIM
 /*

@@ -354,7 +354,11 @@ module soc_65xx #(
 	reg [7:0] rom_do;
     reg [7:0] rom_mem [0:8191];
 	initial
+`ifdef SIM
+        $readmemh("code.hex", rom_mem);
+`else
         $readmemh("rom.hex", rom_mem);
+`endif
 	always @(posedge clk)
 		rom_do <= rom_mem[CPU_AB[12:0]];
 
