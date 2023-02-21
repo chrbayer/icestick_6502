@@ -41,7 +41,6 @@ reg  [7:0] ABH;         // Address Bus Register MSB
 wire [7:0] ADD;         // Adder Hold Register (registered in ALU)
 
 reg  [7:0] DIHOLD;      // Hold for Data In
-reg  DIHOLD_valid;      // Valid Data In
 wire [7:0] DIMUX;       // DI if ready else DIHOLD
 
 reg  [7:0] IRHOLD;      // Hold for Instruction register

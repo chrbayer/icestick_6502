@@ -63,7 +63,6 @@ reg  [7:0] SPL;         // Stack Register LSB
 reg  [7:0] SPH;         // Stack Register MSB
 
 reg  [7:0] DIHOLD;      // Hold for Data In
-reg  DIHOLD_valid;      // Valid Data In
 wire [7:0] DIMUX;       // DI if ready else DIHOLD
 
 reg  [7:0] IRHOLD;      // Hold for Instruction register
