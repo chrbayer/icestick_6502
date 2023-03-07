@@ -223,16 +223,16 @@ module soc_65xx #(
     reg [7:0] rom_mem [0:16383];
 	initial
 `ifdef VERIFICATION_6502
-        $readmemh("6502_verification.hex", rom_mem);
+        $readmemh("../6502_65C02_functional_tests/tass64/6502_functional_test.hex", rom_mem);
 `endif
 `ifdef VERIFICATION_65C02
-        $readmemh("65C02_verification.hex", rom_mem);
+        $readmemh("../6502_65C02_functional_tests/tass64/65C02_extended_opcodes_test.hex", rom_mem);
 `endif
 `ifdef DECIMAL_TEST_65C02
-        $readmemh("65C02_decimal_test.hex", rom_mem);
+        $readmemh("../6502_65C02_functional_tests/tass64/65C02_decimal_test.hex", rom_mem);
 `endif
 `ifdef VERIFICATION_65CE02
-        $readmemh("65CE02_opcodes_test.hex", rom_mem);
+        $readmemh("../6502_65C02_functional_tests/tass64/65CE02_opcodes_test.hex", rom_mem);
 `endif
 	always @(posedge clk)
 		rom_do <= rom_mem[CPU_AB[13:0]];
@@ -245,7 +245,7 @@ module soc_65xx #(
 		$monitor("#%0t test_case = %0h", $time, ram_mem[512]);
 `endif
 `ifdef DECIMAL_TEST_65C02
-		$monitor("#%0t ERROR = %0h", $time, ram_mem[11]);
+		$monitor("#%0t ERROR = %0h", $time, ram_mem[21]);
 `endif
 `ifdef VERIFICATION_65CE02
 		$monitor("#%0t test_case = %0h", $time, ram_mem[514]);

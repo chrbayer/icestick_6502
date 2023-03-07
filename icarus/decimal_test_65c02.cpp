@@ -38,7 +38,7 @@ int main(int argc, char**argv) {
 
     for(int k = 0; k < (1<<24); k++) {
           tick(++tickcount, tb);
-          int current = tb->rootp->soc_65xx__DOT__ram_mem[11];
+          int current = tb->rootp->soc_65xx__DOT__ram_mem[21];
           if (current != test_case) {
               test_case = current;
               printf("#%d test_case: %x\n", tickcount, test_case);

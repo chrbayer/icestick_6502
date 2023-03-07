@@ -47,18 +47,22 @@ $(TOP): tb_soc_65xx.v $(SOURCES)
 	$(VLOG) -D CPU_$(CPU) -D icarus -D SIM -o $(TOP) tb_soc_65xx.v $(SOURCES)
 
 tb_soc_6502_verification: tb_soc_65xx.v $(SOURCES)
+	make -j4 -C ../6502_65C02_functional_tests/tass64
 	$(VLOG) -D CPU_$(CPU) -D icarus -D SIM -D VERIFICATION -D VERIFICATION_6502 -o tb_soc_6502_verification tb_soc_65xx.v $(SOURCES)
 	./tb_soc_6502_verification -lxt2-space
 
 tb_soc_65C02_verification: tb_soc_65xx.v $(SOURCES)
+	make -j4 -C ../6502_65C02_functional_tests/tass64
 	$(VLOG) -D CPU_$(CPU) -D icarus -D SIM -D VERIFICATION -D VERIFICATION_65C02 -o tb_soc_65C02_verification tb_soc_65xx.v $(SOURCES)
 	./tb_soc_65C02_verification -lxt2-space
 
 tb_soc_65C02_decimal_test: tb_soc_65xx.v $(SOURCES)
+	make -j4 -C ../6502_65C02_functional_tests/tass64
 	$(VLOG) -D CPU_$(CPU) -D icarus -D SIM -D VERIFICATION -D DECIMAL_TEST_65C02 -o tb_soc_65C02_decimal_test tb_soc_65xx.v $(SOURCES)
 	./tb_soc_65C02_decimal_test -lxt2-space
 
 tb_soc_65CE02_opcodes_test: tb_soc_65xx.v $(SOURCES)
+	make -j4 -C ../6502_65C02_functional_tests/tass64
 	$(VLOG) -D CPU_$(CPU) -D icarus -D SIM -D VERIFICATION -D VERIFICATION_65CE02 -o tb_soc_65CE02_opcodes_test tb_soc_65xx.v $(SOURCES)
 	./tb_soc_65CE02_opcodes_test -lxt2-space
 
@@ -66,6 +70,7 @@ lint:
 	$(VERILATOR) --lint-only -DCPU_$(CPU) $(SOURCES)
 
 verify:
+	make -j4 -C ../6502_65C02_functional_tests/tass64
 	rm -rf obj_dir
 	$(VERILATOR) -Wno-fatal -cc --exe --public -DCPU_$(CPU) -DVERIFICATION -DVERIFICATION_6502 verification_6502.cpp $(SOURCES_VERIFY)
 	make -j4 -C obj_dir -f Vsoc_65xx.mk
