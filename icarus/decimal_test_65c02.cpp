@@ -36,7 +36,7 @@ int main(int argc, char**argv) {
 
     int test_case = -1;
 
-    for(int k = 0; k < (1<<24); k++) {
+    for(int k = 0; k < (1<<26); k++) {
           tick(++tickcount, tb);
           int current = tb->rootp->soc_65xx__DOT__ram_mem[21];
           if (current != test_case) {
