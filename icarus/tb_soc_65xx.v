@@ -61,13 +61,18 @@ module tb_soc_65xx;
   		$dumpfile("tb_soc_6502.lxt");
 		$dumpvars/*(1, uut)*/;
 `endif
+`ifdef DECIMAL_TEST_6502
+		#33838000 $finish;
+  		$dumpfile("tb_soc_6502.lxt");
+		$dumpvars/*(1, uut)*/;
+`endif
 `ifdef VERIFICATION_65C02
 		#3383800 $finish;
   		$dumpfile("tb_soc_6502.lxt");
 		$dumpvars/*(1, uut)*/;
 `endif
 `ifdef DECIMAL_TEST_65C02
-		#3383800 $finish;
+		#33838000 $finish;
   		$dumpfile("tb_soc_6502.lxt");
 		$dumpvars/*(1, uut)*/;
 `endif

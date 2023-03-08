@@ -225,6 +225,9 @@ module soc_65xx #(
 `ifdef VERIFICATION_6502
         $readmemh("../6502_65C02_functional_tests/tass64/6502_functional_test.hex", rom_mem);
 `endif
+`ifdef DECIMAL_TEST_6502
+        $readmemh("../6502_65C02_functional_tests/tass64/6502_decimal_test.hex", rom_mem);
+`endif
 `ifdef VERIFICATION_65C02
         $readmemh("../6502_65C02_functional_tests/tass64/65C02_extended_opcodes_test.hex", rom_mem);
 `endif
@@ -240,6 +243,9 @@ module soc_65xx #(
 	initial
 `ifdef VERIFICATION_6502
 		$monitor("#%0t test_case = %0h", $time, ram_mem[512]);
+`endif
+`ifdef DECIMAL_TEST_6502
+		$monitor("#%0t ERROR = %0h", $time, ram_mem[21]);
 `endif
 `ifdef VERIFICATION_65C02
 		$monitor("#%0t test_case = %0h", $time, ram_mem[512]);

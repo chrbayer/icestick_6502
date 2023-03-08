@@ -87,6 +87,10 @@ ifeq ($(CPU),$(filter $(CPU),65CE02 45GS02))
 	make -j4 -C obj_dir -f Vsoc_65xx.mk
 	./obj_dir/Vsoc_65xx
 endif
+else
+	$(VERILATOR) -Wno-fatal -cc --exe --public -DCPU_$(CPU) -DVERIFICATION -DDECIMAL_TEST_6502 decimal_test_65c02.cpp $(SOURCES_VERIFY)
+	make -j4 -C obj_dir -f Vsoc_65xx.mk
+	./obj_dir/Vsoc_65xx
 endif
 
 clean:
