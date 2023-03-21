@@ -229,9 +229,9 @@ module soc_65xx #(
 
 	// Memory configuration
 	parameter
-		ROMPAGE0	= 8'h0c,
 		ROMPAGE1 	= 8'h0e,
 		ROMPAGE2 	= 8'h0f,
+		RAMPAGE		= 8'h0c,
 		IOPAGE  	= 8'h0d,
 		CIASUBPAGE	= 6'h00,
 		ACIASUBPAGE	= 6'h01;
@@ -289,13 +289,14 @@ module soc_65xx #(
 
 	// address decode
 	wire pFlash = (CPU_AB[19:12] == ROMPAGE1 || CPU_AB[19:12] == ROMPAGE2) ? 1'b1 : 1'b0;
+	wire pRam = (CPU_AB[19:12] == RAMPAGE) ? 1'b1 : 1'b0;
 	wire pIo = (CPU_AB[19:12] == IOPAGE) ? 1'b1 : 1'b0;
-	wire pRam = CPU_AB[19];
+	wire pBus= CPU_AB[19];
 
 	wire [5:0] ios = CPU_AB[11:6];
 
-	assign bus_read = pRam & CPU_WE_n;
-	assign bus_write = pRam & ~CPU_WE_n;
+	assign bus_read = pBus & CPU_WE_n;
+	assign bus_write = pBus & ~CPU_WE_n;
 	assign bus_addr = CPU_AB[18:0];
 	assign bus_do = CPU_DO;
 
@@ -362,6 +363,15 @@ module soc_65xx #(
 	always @(posedge clk)
 		rom_do <= rom_mem[CPU_AB[12:0]];
 
+	// Internal RAM @ pages c0-cf
+	reg [7:0] ram_do;
+    reg [7:0] ram_mem [0:4095];
+	always @(posedge clk)
+		ram_do <= ram_mem[CPU_AB[11:0]];
+	always @(posedge clk)
+		if((CPU_WE_n == 1'b0) && (pRam == 1'b1))
+			ram_mem[CPU_AB[11:0]] <= CPU_DO;
+
 	// data mux
 	reg [7:0] mux_sel;
 	reg [5:0] sec_sel;
@@ -374,6 +384,7 @@ module soc_65xx #(
 		casez(mux_sel)
 			ROMPAGE1,
 			ROMPAGE2:	CPU_DI = rom_do;
+			RAMPAGE:	CPU_DI = ram_do;
 			IOPAGE:  casez(sec_sel)
 					     CIASUBPAGE:	CPU_DI = cia_do;
 						 ACIASUBPAGE:   CPU_DI = acia_do;
