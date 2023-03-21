@@ -2002,7 +2002,8 @@ always @(posedge clk)
             8'b0010_?100,   // BIT
             8'b010?_0100,   // ASR
             8'b01?0_1010,   // LSR A/ROR A
-            8'b0100_0011:   // ASR A
+            8'b0100_0011,   // ASR A
+            8'b1011_?101:   // LDA, X
                             if ( quad_state == QUAD2 || quad_state == QUAD2B ) quad_state <= QUADC;
                             else quad_state <= QUAD0;
 
