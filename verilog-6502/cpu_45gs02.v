@@ -139,7 +139,7 @@ wire [7:0] P = { N, V, E, 1'b1, D, I, Z, C };
  * instruction decoder/sequencer
  */
 
-reg [6:0] state = RESET;
+reg [5:0] state = RESET;
 
 /*
  * control signals
@@ -184,6 +184,8 @@ reg adc_bcd;            // ALU should do BCD style carry
 reg adj_bcd;            // results should be BCD adjusted
 reg [2:0] quad_state;   // quad detection state
 reg [1:0] qr_counter;   // quad read counter
+reg [1:0] qrw_counter;  // quad read write counter
+reg [1:0] reg_counter;  // 32 bit reg counter
 reg [1:0] long_state;   // 32 bit indirect memory access detection state
 
 reg [15:0]lower_bank;   // lower bank configuration register
@@ -257,75 +259,71 @@ localparam OP_A   = 4'b1111;
  * kept in separate flops.
  */
 
-localparam RESET  = 7'd0;  // During reset and initial state
-localparam ABS0   = 7'd1;  // ABS     - fetch LSB
-localparam ABS1   = 7'd2;  // ABS     - fetch MSB
-localparam ABSX0  = 7'd3;  // ABS, X  - fetch LSB and send to ALU (+X)
-localparam ABSX1  = 7'd4;  // ABS, X  - fetch MSB and send to ALU (+Carry)
-localparam BRA0   = 7'd5;  // Branch  - fetch offset and send to ALU (+PCL)
-localparam BRA0B  = 7'd6;  // Branch  - fetch offset and send to ALU (+PCH)
-localparam BRA1   = 7'd7;  // Branch  - fetch opcode
-localparam BRK0   = 7'd8;  // BRK/IRQ - push PCH, decrement SP
-localparam BRK1   = 7'd9;  // BRK/IRQ - push PCL, decrement SP
-localparam BRK2   = 7'd10; // BRK/IRQ - push P, decrement SP
-localparam BRK3   = 7'd11; // BRK/IRQ - fetch @ fffe
-localparam DECODE = 7'd12; // IR is valid, decode instruction, and write prev reg
+localparam RESET  = 6'd0;  // During reset and initial state
+localparam ABS0   = 6'd1;  // ABS     - fetch LSB
+localparam ABS1   = 6'd2;  // ABS     - fetch MSB
+localparam ABSX0  = 6'd3;  // ABS, X  - fetch LSB and send to ALU (+X)
+localparam ABSX1  = 6'd4;  // ABS, X  - fetch MSB and send to ALU (+Carry)
+localparam BRA0   = 6'd5;  // Branch  - fetch offset and send to ALU (+PCL)
+localparam BRA0B  = 6'd6;  // Branch  - fetch offset and send to ALU (+PCH)
+localparam BRA1   = 6'd7;  // Branch  - fetch opcode
+localparam BRK0   = 6'd8;  // BRK/IRQ - push PCH, decrement SP
+localparam BRK1   = 6'd9;  // BRK/IRQ - push PCL, decrement SP
+localparam BRK2   = 6'd10; // BRK/IRQ - push P, decrement SP
+localparam BRK3   = 6'd11; // BRK/IRQ - fetch @ fffe
+localparam DECODE = 6'd12; // IR is valid, decode instruction, and write prev reg
 `ifdef PRESYNC
 localparam REG    = DECODE;
 `else
-localparam REG    = 7'd13; // Read register for reg-reg transfers`endif
+localparam REG    = 6'd13; // Read register for reg-reg transfers`endif
 `endif
-localparam FETCH  = 7'd14; // fetch next opcode, and perform prev ALU op
-localparam INDX0  = 7'd15; // (BP,X)  - fetch BP address, and send to ALU (+X)
-localparam INDX1  = 7'd16; // (BP,X)  - fetch LSB at BP+X, calculate BP+X+1
-localparam INDX2  = 7'd17; // (BP,X)  - fetch MSB at BP+X+1
-localparam INDX3  = 7'd18; // (BP,X)  - fetch data
-localparam INDY0  = 7'd19; // (BP),Y/Z  - fetch BP address, and send BP to ALU (+1)
-localparam INDY1  = 7'd20; // (BP),Y/Z  - fetch at BP+1, and send LSB to ALU (+Y/Z)
-localparam INDY2  = 7'd21; // (BP),Y/Z  - fetch data MSB and adjust to Carry
-localparam JMP0   = 7'd22; // JMP     - fetch PCL and hold
-localparam JMP1   = 7'd23; // JMP     - fetch PCH
-localparam JMPI0  = 7'd24; // JMP IND - fetch LSB and send to ALU for delay (+0)
-localparam JMPI1  = 7'd25; // JMP IND - fetch MSB, proceed with JMP0 state
-localparam JSR0   = 7'd26; // JSR     - fetch LSB in ADL
-localparam JSR1   = 7'd27; // JSR     - fetch MSB, push PCH, decrement SP
-localparam JSR2   = 7'd28; // JSR     - push PCL, decrement SP, setup PC to new address
-localparam PULL0  = 7'd29; // PLP/PLA/PLX/PLY/PLZ - setup address for SP+1, increment SP
-localparam PULL1  = 7'd30; // PLP/PLA/PLX/PLY/PLZ - fetch data
-localparam PUSH0  = 7'd31; // PHP/PHA/PHX/PHY/PHZ - push data to SP, decrement SP
-localparam READ   = 7'd32; // Read memory for read/modify/write (INC, DEC, shift)
-localparam RDONLY = 7'd33; // Read memory for BBS/BBR
-localparam RTI0   = 7'd34; // RTI     - read P from stack
-localparam RTI1   = 7'd35; // RTI     - read PCL from stack
-localparam RTS0   = 7'd36; // RTS/RTN - read PCL from stack, store DIMUX for RTN in ALU
-localparam RTS1   = 7'd37; // RTS/RTN - write PCL to ADL, read PCH
-localparam RTS2   = 7'd38; // RTS/RTN - load PC and increment, add value fir RTN to SPL
-localparam RTS3   = 7'd39; // RTN     - Adjust SPH with Carry
-localparam WRITE  = 7'd40; // Write memory for read/modify/write
-localparam BP0    = 7'd41; // Z-page  - fetch BP address
-localparam BPX0   = 7'd42; // BP, X   - fetch BP, and send to ALU (+X)
-localparam JMPIX0 = 7'd43; // JMP (,X)- fetch LSB and send to ALU (+X)
-localparam JMPIX1 = 7'd44; // JMP (,X)- fetch MSB and send to ALU (+Carry)
-localparam SPIND0 = 7'd45; // Fetch offset, add offset to SPL
-localparam SPIND1 = 7'd46; // Fetch SP + offset as LSB
-localparam SPIND2 = 7'd47; // Fetch SP + offset + 1 as MSB, Y to LSB
-localparam PUSHW0 = 7'd48; // Setup address for push on stack
-localparam PUSHW1 = 7'd49; // Get MSB, Push MSB for imm16 push, decrement SP
-localparam PUSHW2 = 7'd50; // Push LSB for imm16 push, decrement SP
-localparam PHWRD0 = 7'd51; // Push MSB for 16 bit PHW a16
-localparam READW0 = 7'd52; // Setup read MSB for read/modify/write 16 bit
-localparam READW1 = 7'd53; // Read MSB for read/modify/write 16 bit
-localparam WRITEW = 7'd54; // Write MSB for read/modify/write 16 bit
-localparam READ1  = 7'd55; // First extra operation during quad read command
-localparam READ2  = 7'd56; // Extra second operation during quad read command
-localparam READ3  = 7'd57; // Extra third operation during quad read command
-localparam REG1   = 7'd58; // First extra operation during quad register command
-localparam REG2   = 7'd59; // Second extra operation during quad register command
-localparam REG3   = 7'd60; // Third extra operation during quad register command
-localparam READQ0 = 7'd61; // Setup read MSB for read/modify/write 16 bit or quad
-localparam READQ1 = 7'd62; // Read MSB for read/modify/write 16 bit or quad
-localparam WRITEQ = 7'd63; // Write MSB for read/modify/write 16 bit or quad
-localparam LONG   = 7'd64; // Generation of extra MSBs for direkt memory access > 16 bit
+localparam FETCH  = 6'd14; // fetch next opcode, and perform prev ALU op
+localparam INDX0  = 6'd15; // (BP,X)  - fetch BP address, and send to ALU (+X)
+localparam INDX1  = 6'd16; // (BP,X)  - fetch LSB at BP+X, calculate BP+X+1
+localparam INDX2  = 6'd17; // (BP,X)  - fetch MSB at BP+X+1
+localparam INDX3  = 6'd18; // (BP,X)  - fetch data
+localparam INDY0  = 6'd19; // (BP),Y/Z  - fetch BP address, and send BP to ALU (+1)
+localparam INDY1  = 6'd20; // (BP),Y/Z  - fetch at BP+1, and send LSB to ALU (+Y/Z)
+localparam INDY2  = 6'd21; // (BP),Y/Z  - fetch data MSB and adjust to Carry
+localparam JMP0   = 6'd22; // JMP     - fetch PCL and hold
+localparam JMP1   = 6'd23; // JMP     - fetch PCH
+localparam JMPI0  = 6'd24; // JMP IND - fetch LSB and send to ALU for delay (+0)
+localparam JMPI1  = 6'd25; // JMP IND - fetch MSB, proceed with JMP0 state
+localparam JSR0   = 6'd26; // JSR     - fetch LSB in ADL
+localparam JSR1   = 6'd27; // JSR     - fetch MSB, push PCH, decrement SP
+localparam JSR2   = 6'd28; // JSR     - push PCL, decrement SP, setup PC to new address
+localparam PULL0  = 6'd29; // PLP/PLA/PLX/PLY/PLZ - setup address for SP+1, increment SP
+localparam PULL1  = 6'd30; // PLP/PLA/PLX/PLY/PLZ - fetch data
+localparam PUSH0  = 6'd31; // PHP/PHA/PHX/PHY/PHZ - push data to SP, decrement SP
+localparam READ   = 6'd32; // Read memory for read/modify/write (INC, DEC, shift)
+localparam RDONLY = 6'd33; // Read memory for BBS/BBR
+localparam RTI0   = 6'd34; // RTI     - read P from stack
+localparam RTI1   = 6'd35; // RTI     - read PCL from stack
+localparam RTS0   = 6'd36; // RTS/RTN - read PCL from stack, store DIMUX for RTN in ALU
+localparam RTS1   = 6'd37; // RTS/RTN - write PCL to ADL, read PCH
+localparam RTS2   = 6'd38; // RTS/RTN - load PC and increment, add value fir RTN to SPL
+localparam RTS3   = 6'd39; // RTN     - Adjust SPH with Carry
+localparam WRITE  = 6'd40; // Write memory for read/modify/write
+localparam BP0    = 6'd41; // Z-page  - fetch BP address
+localparam BPX0   = 6'd42; // BP, X   - fetch BP, and send to ALU (+X)
+localparam JMPIX0 = 6'd43; // JMP (,X)- fetch LSB and send to ALU (+X)
+localparam JMPIX1 = 6'd44; // JMP (,X)- fetch MSB and send to ALU (+Carry)
+localparam SPIND0 = 6'd45; // Fetch offset, add offset to SPL
+localparam SPIND1 = 6'd46; // Fetch SP + offset as LSB
+localparam SPIND2 = 6'd47; // Fetch SP + offset + 1 as MSB, Y to LSB
+localparam PUSHW0 = 6'd48; // Setup address for push on stack
+localparam PUSHW1 = 6'd49; // Get MSB, Push MSB for imm16 push, decrement SP
+localparam PUSHW2 = 6'd50; // Push LSB for imm16 push, decrement SP
+localparam PHWRD0 = 6'd51; // Push MSB for 16 bit PHW a16
+localparam READW0 = 6'd52; // Setup read MSB for read/modify/write 16 bit
+localparam READW1 = 6'd53; // Read MSB for read/modify/write 16 bit
+localparam WRITEW = 6'd54; // Write MSB for read/modify/write 16 bit
+localparam READ1  = 6'd55; // First/second/third extra operation during quad read command
+localparam REG1   = 6'd56; // First/second/third extra operation during quad register command
+localparam READQ0 = 6'd57; // Setup read MSB for read/modify/write 16 bit or quad
+localparam READQ1 = 6'd58; // Read MSB for read/modify/write 16 bit or quad
+localparam WRITEQ = 6'd59; // Write MSB for read/modify/write 16 bit or quad
+localparam LONG   = 6'd60; // Generation of extra MSBs for direkt memory access > 16 bit
 
 `ifdef SIM
 /*
@@ -393,11 +391,7 @@ always @*
         READW1: statename = "READW1";
         WRITEW: statename = "WRITEW";
         READ1:  statename = "READ1";
-        READ2:  statename = "READ2";
-        READ3:  statename = "READ3";
         REG1:   statename = "REG1";
-        REG2:   statename = "REG2";
-        REG3:   statename = "REG3";
         READQ0: statename = "READQ0";
         READQ1: statename = "READQ1";
         WRITEQ: statename = "WRITEQ";
@@ -616,8 +610,6 @@ always @*
         REG,
 `endif
         REG1,
-        REG2,
-        REG3,
         READ,
         READW1,
         READQ1,
@@ -625,9 +617,7 @@ always @*
         WRITEW,
         WRITEQ:         AB = { ABH, ABL };
 
-        READ1,
-        READ2,
-        READ3:          AB = { ABH, ABL } + 16'd1;
+        READ1:          AB = { ABH, ABL } + 16'd1;
 
         READW0:         AB = word_abs ? { ABH, ABL } + 16'd1 : { ABH, ABL + 8'd1 };
 
@@ -661,7 +651,7 @@ always @(posedge clk)
 always @(posedge clk)
     if( state == JSR0 || state == BRA0 ) ADH <= PCH;
 
-assign eAB = (state == INDY2 || state == READ1 || state == READ2 || state == READ3) && long_state == LONGC ? { DIMUX[3:0] + { 3'd0, CO }, AB } : { (bank_mask & (1 << AB[15:13])) != 8'd0 ? AB[15] ? upper_bank[11:0] : lower_bank[11:0] : 12'h000, 8'h0 } + { 4'h0, AB };
+assign eAB = (state == INDY2 || state == READ1) && long_state == LONGC ? { DIMUX[3:0] + { 3'd0, CO }, AB } : { (bank_mask & (1 << AB[15:13])) != 8'd0 ? AB[15] ? upper_bank[11:0] : lower_bank[11:0] : 12'h000, 8'h0 } + { 4'h0, AB };
 
 
 /*
@@ -686,11 +676,7 @@ always @*
 
         BRK2:           DO = (~IRQ_n | NMI_edge) ? (P & 8'b1110_1111) : P;
 
-        READ1:          DO = AXYZB[SEL_X];
-
-        READ2:          DO = AXYZB[SEL_Y];
-
-        READ3:          DO = AXYZB[SEL_Z];
+        READ1:          DO = qr_counter == 2'd0 ? AXYZB[SEL_X] : qr_counter == 2'd1 ? AXYZB[SEL_Y] : AXYZB[SEL_Z];
 
         default:        DO = regfile;
     endcase
@@ -715,8 +701,6 @@ always @*
         WRITEQ:         WE_n = 0;
 
         READ1,
-        READ2,
-        READ3,
         INDX3,          // only if doing a STA, STX or STY
         INDY2,
         ABSX1,
@@ -764,11 +748,9 @@ always @*
 
         FETCH:          write_register = quad_state == QUADC ? load_reg : 0;
 
-        REG1,
-        REG2,
-        REG3,
-        READ2,
-        READ3:          write_register = load_reg;
+        REG1:           write_register = load_reg;
+
+        READ1:          write_register = qr_counter == 2'd0 ? 0 : load_reg;
 
        default:         write_register = 0;
     endcase
@@ -851,11 +833,9 @@ always @*
         FETCH:          regsel = quad_state == QUADC ? dst_reg : src_reg;
 
         REG1,
-        REG2,
-        REG3,
-        READ2,
-        READ3,
         DECODE:         regsel = dst_reg;
+
+        READ1:          regsel = qr_counter == 2'd0 ? src_reg : dst_reg;
 
         default:        regsel = src_reg;
     endcase
@@ -895,14 +875,10 @@ always @*
             READW1,
             READQ1,
             READ1,
-            READ2,
-            READ3,
 `ifndef PRESYNC
             REG,
 `endif
             REG1,
-            REG2,
-            REG3,
             FETCH:      alu_op = op;
 
             DECODE,
@@ -921,7 +897,7 @@ always @*
         { alu_shift_right, alu_arith_shift } = { pre_shift_right, pre_arith_shift };
     else if( state == FETCH || state == READ )
 `else
-         if( state == FETCH || state == READ || state == READQ1 || state == REG || state == REG1 || state == REG2 || state == REG3 )
+         if( state == FETCH || state == READ || state == READQ1 || state == REG || state == REG1 )
 `endif
             { alu_shift_right, alu_arith_shift } = { shift_right, arith_shift };
         else
@@ -949,11 +925,7 @@ always @*
             REG:        AI = neg ? 8'h00 : shift_right && quad_state == QUADC ? AXYZB[SEL_Z] : regfile;
 `endif
 
-            REG1:       AI = neg ? 8'h00 : shift_right ? AXYZB[SEL_Y] : AXYZB[SEL_X];
-
-            REG2:       AI = neg ? 8'h00 : shift_right ? AXYZB[SEL_X] : AXYZB[SEL_Y];
-
-            REG3:       AI = neg ? 8'h00 : shift_right ? AXYZB[SEL_A] : AXYZB[SEL_Z];
+            REG1:       AI = neg ? 8'h00 : shift_right ? reg_counter == 2'd0 ? AXYZB[SEL_Y] : reg_counter == 2'd1 ? AXYZB[SEL_X] : AXYZB[SEL_A] : reg_counter == 2'd0 ? AXYZB[SEL_X] : reg_counter == 2'd1 ? AXYZB[SEL_Y] : AXYZB[SEL_Z];
 
             INDX0,
             JMPIX0,
@@ -977,11 +949,7 @@ always @*
             RTS2,
             SPIND0:     AI = SPL;
 
-            READ1:      AI = load_only ? 0 : AXYZB[SEL_A];
-
-            READ2:      AI = load_only ? 0 : AXYZB[SEL_X];
-
-            READ3:      AI = load_only ? 0 : AXYZB[SEL_Y];
+            READ1:      AI = load_only ? 0 : qr_counter == 2'd0 ? AXYZB[SEL_A] : qr_counter == 2'd1 ? AXYZB[SEL_X] : AXYZB[SEL_Y];
 
             FETCH:      AI = load_only ? 0 : quad_state == QUADC ? AXYZB[SEL_Z] : regfile;
 
@@ -1010,11 +978,7 @@ always @*
             REG:        BI = neg ? regfile : 8'h00;
 `endif
 
-            REG1:       BI = neg ? AXYZB[SEL_X] : 8'h00;
-
-            REG2:       BI = neg ? AXYZB[SEL_Y] : 8'h00;
-
-            REG3:       BI = neg ? AXYZB[SEL_Z] : 8'h00;
+            REG1:       BI = neg ? reg_counter == 2'd0 ? AXYZB[SEL_X] : reg_counter == 2'd1 ? AXYZB[SEL_Y] : AXYZB[SEL_Z] : 8'h00;
 
             READ:       BI = xmb_ins ? (bit_code[3] ? 8'h01 << bit_code[2:0] : ~(8'h01 << bit_code[2:0])) : (txb_ins ? (trb_ins ? ~regfile : regfile) : 8'h00);
 
@@ -1038,11 +1002,7 @@ always @*
 `endif
         casez( state )
             BRA0B,
-            READ2,
-            READ3,
             REG1,
-            REG2,
-            REG3,
             LONG,
             INDY2,
             JMPIX1,
@@ -1058,9 +1018,9 @@ always @*
 `endif
             READ:       CI = rotate ? C : shift ? 0 : inc;
 
-            READ1:      CI = rotate ? C :
-                            compare ? 1 :
-                            (shift | load_only) ? 0 : C;
+            READ1:      CI = qr_counter == 2'd0 ? rotate ? C :
+                                                 compare ? 1 :
+                                                 (shift | load_only) ? 0 : C : CO;
 
             FETCH:      CI = quad_state == QUADC ? CO :
                             rotate ? C :
@@ -1086,7 +1046,7 @@ always @*
  * Update C flag when doing ADC/SBC, shift/rotate, compare
  */
 always @(posedge clk)
-    if( shift && ((state == WRITE && ~word && quad_state != QUADC) || (state == WRITEW) || (state == WRITEQ && qr_counter == 2'd3)) )
+    if( shift && ((state == WRITE && ~word && quad_state != QUADC) || (state == WRITEW) || (state == WRITEQ && qrw_counter == 2'd3)) )
         C <= CO;
     else if( state == RTI1 )
         C <= DIMUX[0];
@@ -1137,16 +1097,16 @@ always @(posedge clk)
     else if( state == WRITEW )
         Z <= AZ1 & DLDZ;
     else if( state == WRITEQ ) begin
-        if( qr_counter < 2'd3 )
+        if( qrw_counter < 2'd3 )
             DLDZ <= AZ1 & DLDZ;
         else
             Z <= AZ1 & DLDZ;
     end
     else if( state == RTI1 )
         Z <= DIMUX[1];
-    else if( state == READ2 )
+    else if( state == READ1 && qr_counter == 2'd1 )
         DLDZ <= AZ1;
-    else if( state == READ3 )
+    else if( state == READ1 && qr_counter == 2'd2 )
         DLDZ <= AZ1 & DLDZ;
     else if( state == FETCH && quad_state == QUADC )
         DLDZ <= AZ1 & DLDZ;
@@ -1158,9 +1118,9 @@ always @(posedge clk)
     end
 
 always @(posedge clk)
-    if( ((state == WRITE && ~word && quad_state != QUADC) || (state == WRITEW) || (state == WRITEQ && qr_counter == 2'd3)) && ~txb_ins && ~xmb_ins )
+    if( ((state == WRITE && ~word && quad_state != QUADC) || (state == WRITEW) || (state == WRITEQ && qrw_counter == 2'd3)) && ~txb_ins && ~xmb_ins )
         N <= AN1;
-    else if ( state == WRITEQ && qr_counter == 2'd3 && shift_right )
+    else if ( state == WRITEQ && qrw_counter == 2'd3 && shift_right )
         N <= DLDN;
     else if( state == RTI1 )
         N <= DIMUX[7];
@@ -1369,14 +1329,12 @@ always @(posedge clk)
 
         READQ0: state <= READQ1;
         READQ1: state <= WRITEQ;
-        WRITEQ: state <= qr_counter < 2'd3 ? READQ0 : FETCH;
+        WRITEQ: state <= qrw_counter < 2'd3 ? READQ0 : FETCH;
 
 `ifndef PRESYNC
         REG:    state <= quad_state == QUADC ? REG1 : DECODE;
 `endif
-        REG1:   state <= REG2;
-        REG2:   state <= REG3;
-        REG3:   state <= DECODE;
+        REG1:   state <= reg_counter < 2'd2 ? REG1 : DECODE;
 
         RDONLY: state <= bbx_ins ? BRA0 : FETCH;
 
@@ -1413,9 +1371,7 @@ always @(posedge clk)
         JMPI0:  state <= JMPI1;
         JMPI1:  state <= JMP0;
 
-        READ1:  state <= READ2;
-        READ2:  state <= READ3;
-        READ3:  state <= FETCH;
+        READ1:  state <= reg_counter < 2'd2 ? READ1 : FETCH;
 
         RESET:  state <= BRK2;
 
@@ -1434,9 +1390,23 @@ always @(posedge clk)
 
 always @(posedge clk)
     if( state == DECODE )
-        qr_counter <= 2'd0;
+        qrw_counter <= 2'd0;
     else if( state == READQ0 )
+        qrw_counter <= qrw_counter + 2'd1;
+
+
+always @(posedge clk)
+    if( state == DECODE )
+        qr_counter <= 2'd0;
+    else if( state == READ1 )
         qr_counter <= qr_counter + 2'd1;
+
+
+always @(posedge clk)
+    if( state == DECODE )
+        reg_counter <= 2'd0;
+    else if( state == REG1 )
+        reg_counter <= reg_counter + 2'd1;
 
 
 always @(posedge clk)
@@ -1514,9 +1484,9 @@ always @(posedge clk)
         endcase
     else if ( quad_state == QUADC ) begin
         if ( state == REG ) dst_reg <= shift_right ? SEL_Z : SEL_A;
-        else if ( state == READ2 || state == REG1 ) dst_reg <= shift_right ? SEL_Y : SEL_X;
-        else if ( state == READ3 || state == REG2 ) dst_reg <= shift_right ? SEL_X : SEL_Y;
-        else if ( state == FETCH || state == REG3 )  dst_reg <= shift_right ? SEL_A : SEL_Z;
+        else if ( (state == READ1 && qr_counter == 2'd1) || (state == REG1 && reg_counter == 2'd0) ) dst_reg <= shift_right ? SEL_Y : SEL_X;
+        else if ( (state == READ1 && qr_counter == 2'd2) || (state == REG1 && reg_counter == 2'd1) ) dst_reg <= shift_right ? SEL_X : SEL_Y;
+        else if ( state == FETCH || (state == REG1 && reg_counter == 2'd2) )  dst_reg <= shift_right ? SEL_A : SEL_Z;
     end
 
 
