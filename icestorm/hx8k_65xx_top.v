@@ -1,5 +1,5 @@
 module hx8k_65xx_top #(
-	parameter clk_freq    	= 9200000,
+	parameter clk_freq    	= 10000000,
 	parameter periph_freq 	= 3333333,
 	parameter baudrate		= 115200
 ) (
@@ -191,7 +191,7 @@ module clk_div3 (clk, clk_out);
 endmodule
 
 module soc_65xx #(
-	parameter clk_freq    	= 9200000,
+	parameter clk_freq    	= 10000000,
 	parameter periph_freq 	= 3333333,
 	parameter baudrate		= 115200
 ) (
