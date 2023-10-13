@@ -229,7 +229,6 @@ module soc_65xx #(
 
 	// Memory configuration
 	parameter
-		ROMPAGE0	= 8'h0c,
 		ROMPAGE1 	= 8'h0e,
 		ROMPAGE2 	= 8'h0f,
 		IOPAGE  	= 8'h0d,

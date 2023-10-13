@@ -69,7 +69,7 @@ tb_hx8k_65xx_top: $(SRC) $(REAL_HEX)
 	./tb_hx8k_65xx_top -lxt2-space
 
 clean:
-	rm -f $(PROJ).json $(PROJ).asc temp.asc $(PROJ).rpt $(PROJ).bin $(PROJ).hex code.hex rom.hex
+	rm -f $(PROJ).json $(PROJ).asc temp.asc $(PROJ).rpt $(PROJ).bin $(PROJ).hex code.hex rom.hex abc.history
 	$(MAKE) clean -C ../kickc/
 
 .SECONDARY:

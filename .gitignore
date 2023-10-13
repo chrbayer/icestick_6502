@@ -24,6 +24,7 @@ icarus/*.vcd
 icarus/*.lxt
 icarus/*.gtkw
 icarus/obj_dir
+icestorm/abc.history
 icestorm/code.hex
 icestorm/rom.hex
 icestorm/temp.asc

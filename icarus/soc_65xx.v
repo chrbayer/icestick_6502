@@ -43,12 +43,12 @@ module soc_65xx #(
 	// Memory configuration
 	parameter
 `ifndef NO_BANK_SWITCHING
-		ROMPAGE0	= 8'h0c,
+		ROMPAGE0 	= 8'h0c,
 		ROMPAGE1 	= 8'h0e,
 		ROMPAGE2 	= 8'h0f,
 		IOPAGE  	= 8'h0d,
 `else
-		ROMPAGE0	= 4'hc,
+		ROMPAGE0 	= 4'hc,
 		ROMPAGE1 	= 4'he,
 		ROMPAGE2 	= 4'hf,
 		IOPAGE  	= 4'hd,
@@ -283,6 +283,10 @@ module soc_65xx #(
 		end
 	always @*
 		casez(mux_sel)
+`ifdef VERIFICATION
+			ROMPAGE0,
+			IOPAGE,
+`endif
 			ROMPAGE1,
 			ROMPAGE2:	CPU_DI = rom_do;
 `ifndef VERIFICATION
@@ -291,9 +295,6 @@ module soc_65xx #(
 						 ACIASUBPAGE:   CPU_DI = acia_do;
 						 default: 		CPU_DI = ram_do;
 					 endcase
-`else
-			ROMPAGE0,
-			IOPAGE:  CPU_DI = rom_do;
 `endif
 			default: CPU_DI = ram_do;
 		endcase
