@@ -3,6 +3,9 @@
 # 03-03-19 E. Brombaugh
 # this version builds the CPU code from C
 
+# program execution configuration
+PROG ?= kickc
+
 SRC =	hx8k_65xx_top.v pll.v sram.v \
 		../src/acia.v ../src/acia_rx.v ../src/acia_tx.v ../src/mos6526.v \
 		../verilog-6502/alu_65ce02.v ../verilog-6502/cpu_45gs02.v
@@ -40,8 +43,8 @@ $(FAKE_HEX):
 	$(NEXTPNR) $(NEXTPNR_ARGS) --$(DEVICE) --package $(PACKAGE) --json $< --pcf $(PIN_DEF) --asc $@
 
 $(REAL_HEX):
-	$(MAKE) -C ../vbcc/
-	cp ../vbcc/$(FAKE_HEX) ./$(REAL_HEX)
+	$(MAKE) -C ../$(PROG)/
+	cp ../$(PROG)/$(FAKE_HEX) ./$(REAL_HEX)
 
 assembly:
 	$(MAKE) -C ../assembly/
@@ -70,7 +73,6 @@ tb_hx8k_65xx_top: $(SRC) $(REAL_HEX)
 
 clean:
 	rm -f $(PROJ).json $(PROJ).asc temp.asc $(PROJ).rpt $(PROJ).bin $(PROJ).hex code.hex rom.hex abc.history
-	$(MAKE) clean -C ../kickc/
 
 .SECONDARY:
 .PHONY: all prog recode clean

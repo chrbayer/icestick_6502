@@ -4,6 +4,9 @@
 # cpu configuration
 CPU ?= 45GS02
 
+# program execution configuration
+PROG ?= cc65
+
 # sources
 SOURCES = soc_65xx.v ../src/acia.v ../src/acia_rx.v ../src/acia_tx.v ../src/mos6526.v
 SOURCES_VERIFY = soc_65xx.v
@@ -39,8 +42,8 @@ VERILATOR = verilator
 all: $(TOP).lxt
 
 $(TOP).lxt: $(TOP)
-	make -C ../cc65
-	cp ../cc65/rom.hex .
+	make -C ../$(PROG)
+	cp ../$(PROG)/rom.hex .
 	./$(TOP) -lxt2-space
 
 $(TOP): tb_soc_65xx.v $(SOURCES)
