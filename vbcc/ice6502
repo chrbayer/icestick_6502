@@ -1,9 +1,9 @@
--cc=vbcc6502 -I"$VBCC"/targets/6502-sim/include -65c02 -quiet %s -o= %s %s -O=%ld
--ccv=vbcc6502 -I"$VBCC"/targets/6502-sim/include -65c02 %s -o= %s %s -O=%ld
+-cc=vbcc6502 -I"$VBCC"/targets/6502-sim/include -mega65 -quiet %s -o= %s %s -O=%ld
+-ccv=vbcc6502 -I"$VBCC"/targets/6502-sim/include -mega65 %s -o= %s %s -O=%ld
 -unsigned-char
 -mask-opt
--as=vasm6502_oldstyle -quiet -nowarn=62 -opt-branch -c02 -ldots -Fvobj %s -o %s
--asv=vasm6502_oldstyle -L listfile -nowarn=62 -Fvobj -opt-branch -c02 -ldots %s -o %s
+-as=vasm6502_oldstyle -quiet -nowarn=62 -opt-branch -mega65 -ldots -Fvobj %s -o %s
+-asv=vasm6502_oldstyle -L listfile -nowarn=62 -Fvobj -opt-branch -mega65 -ldots %s -o %s
 -rm=rm %s
 -rmv=rm %s
 -cpr=vcpr6502 -quiet %s %s
