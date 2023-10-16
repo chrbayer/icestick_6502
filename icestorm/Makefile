@@ -40,8 +40,8 @@ $(FAKE_HEX):
 	$(NEXTPNR) $(NEXTPNR_ARGS) --$(DEVICE) --package $(PACKAGE) --json $< --pcf $(PIN_DEF) --asc $@
 
 $(REAL_HEX):
-	$(MAKE) -C ../kickc/
-	cp ../kickc/$(FAKE_HEX) ./$(REAL_HEX)
+	$(MAKE) -C ../vbcc/
+	cp ../vbcc/$(FAKE_HEX) ./$(REAL_HEX)
 
 assembly:
 	$(MAKE) -C ../assembly/

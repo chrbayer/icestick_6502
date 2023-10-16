@@ -11,6 +11,10 @@ cc65/*.lst
 kickc/*.asm
 kickc/*.bin
 kickc/rom.hex
+vbcc/rom
+vbcc/rom.hex
+vbcc/rom.map
+vbcc/listfile
 icarus/rom.hex
 icarus/tb_soc_6502
 icarus/tb_soc_65C02
