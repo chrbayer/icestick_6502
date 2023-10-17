@@ -241,6 +241,7 @@ module soc_65xx #(
 
 	// peripheral clock settings
 	localparam pclk_cnt = (clk_freq / periph_freq);
+	localparam pclk_counter_max = pclk_cnt - 1;
 	localparam PCW = $clog2(pclk_cnt);
 
 	reg pclk;
@@ -253,7 +254,7 @@ module soc_65xx #(
 			pclk <= 0;
 			pclk_counter <= 0;
 		end
-		else if(pclk_counter == (pclk_cnt[PCW-1:0]-1))
+		else if(pclk_counter == pclk_counter_max[PCW-1:0])
 		begin
 			pclk <= 1;
 			pclk_counter <= 0;

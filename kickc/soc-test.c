@@ -60,6 +60,7 @@ void main() {
 
     // Configure CIA
     CIA->PORT_B_DDR = 0xC0;
+    CIA->PORT_B = 0x00;
 
     // Infinite loop
     while(1) {

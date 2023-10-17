@@ -104,8 +104,8 @@ module tb_soc_65xx;
         .gpio_b_i(gpio_b_i),    // gpio b input
         .gpio_b_o(gpio_b_o),    // gpio b output
         .flag_n(flag_n),        // low-true FLAG
-	    .pc_n(pc_n),            // low-true PC
-	    .sp_in(sp_in),          // Serial Port in
+        .pc_n(pc_n),            // low-true PC
+        .sp_in(sp_in),          // Serial Port in
         .sp_out(sp_out),        // Serual Port out
         .cnt_in(cnt_in),        // CNT in
         .cnt_out(cnt_out)       // CNT out
