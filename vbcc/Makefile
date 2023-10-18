@@ -8,7 +8,7 @@ OBJ = rom
 
 # build tools & options
 VC = vc
-VC_ARGS = +ice6502 -O1 -size -o $(OBJ)
+VC_ARGS = +ice6502 -O2 -size -o $(OBJ)
 HEXDUMP = hexdump
 HEXDUMP_ARGS = -v -e '1/1 "%02x " "\n"'
 

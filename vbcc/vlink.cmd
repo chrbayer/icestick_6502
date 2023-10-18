@@ -19,7 +19,7 @@ SECTIONS
   bss (NOLOAD)   : {*(bss)}     >ram
   zpage (NOLOAD) : {*(zpage) *(zp1) *(zp2)} >zero
 
-  __STACK = 0xD000-STACKLEN;
+  __STACK = 0xCFFF;
   __DS    = ADDR(data);
   __DE    = ADDR(data) + SIZEOF(data);
   __DC    = LOADADDR(data);
@@ -27,5 +27,5 @@ SECTIONS
   __BE    = ADDR(bss) + SIZEOF(bss);
 
   ___heap    = ADDR(bss) + SIZEOF(bss);
-  ___heapend = 0xCFFF-STACKLEN;
+  ___heapend = __STACK-STACKLEN;
 }
