@@ -14,7 +14,7 @@ unsigned int a;
 
 void acia_tx_chr(char character)
 {
-    while (!(ACIA->CTRL & 0x02)) ;
+    while (!(ACIA->CTRL & ACIA_STATUS_TRANSMIT_DATA_REG_EMPTY)) ;
     ACIA->DATA = character;
 }
 

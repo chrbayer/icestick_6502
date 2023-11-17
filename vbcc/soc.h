@@ -1,3 +1,6 @@
+#ifndef __SOC_H__
+#define __SOC_H__
+
 /// The MOS 6526 Complex Interface Adapter (CIA)
 /// http://archive.6502.org/datasheets/mos_6526_cia_recreated.pdf
 struct MOS6526_CIA {
@@ -76,3 +79,20 @@ struct MOS6551_ACIA {
     volatile char DATA;
 };
 #define ACIA ((struct MOS6551_ACIA *)0xD040)
+
+/// Control - Master reset (0x03: reset active)
+#define ACIA_CONTROL_RESET 0x03
+/// Control - Transmit interrupt enable (1: enabled, 0: disabled)
+#define ACIA_CONTROL_TRANSMIT_INT_ENABLED 0x20
+/// Control - Receive interrupt enable (1: enabled, 0: disabled)
+#define ACIA_CONTROL_RECEIVE_INT_ENABLED 0x80
+/// Status - Receive data register full (1: full, 0: not full)
+#define ACIA_STATUS_RECEIVE_DATA_REG_FULL 0x01
+/// Status - Transmit data register empty (1: empty, 0: not empty)
+#define ACIA_STATUS_TRANSMIT_DATA_REG_EMPTY 0x02
+/// Status - Receive data error detected (1: error detected, 0: error not detected)
+#define ACIA_STATUS_RECEIVE_ERROR_OCCURED 0x10
+/// Status - Interupt request present (1: IRQ present, 0: IRQ not present)
+#define ACIA_STATUS_IRQ_ACTIVE 0x80
+
+#endif
