@@ -34,7 +34,7 @@ module hx8k_65xx_top #(
     // reset
     initial
     begin
-  		$dumpfile("tb_hx8k_65xx_top.lxt");
+  		$dumpfile("tb_hx8k_65xx_top.fst");
 		$dumpvars;
 
         // init regs

@@ -69,7 +69,7 @@ lint: $(SRC)
 
 tb_hx8k_65xx_top: $(SRC) $(REAL_HEX)
 	$(VLOG) -D icarus -D SIM -o tb_hx8k_65xx_top $(SRC)
-	./tb_hx8k_65xx_top -lxt2-space
+	./tb_hx8k_65xx_top -lfst
 
 clean:
 	rm -f $(PROJ).json $(PROJ).asc temp.asc $(PROJ).rpt $(PROJ).bin $(PROJ).hex code.hex rom.hex abc.history

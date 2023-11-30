@@ -33,16 +33,16 @@ module tb_soc_65xx;
     begin
 `ifndef VERIFICATION
 `ifdef CPU_6502
-  		$dumpfile("tb_soc_6502.lxt");
+  		$dumpfile("tb_soc_6502.fst");
 `endif
 `ifdef CPU_65C02
-  		$dumpfile("tb_soc_65C02.lxt");
+  		$dumpfile("tb_soc_65C02.fst");
 `endif
 `ifdef CPU_65CE02
-  		$dumpfile("tb_soc_65CE02.lxt");
+  		$dumpfile("tb_soc_65CE02.fst");
 `endif
 `ifdef CPU_45GS02
-  		$dumpfile("tb_soc_45GS02.lxt");
+  		$dumpfile("tb_soc_45GS02.fst");
 `endif
 		$dumpvars/*(1, uut)*/;
 `endif
@@ -58,27 +58,27 @@ module tb_soc_65xx;
 `ifdef VERIFICATION
 `ifdef VERIFICATION_6502
 		#3383800 $finish;
-  		$dumpfile("tb_soc_6502.lxt");
+  		$dumpfile("tb_soc_6502.fst");
 		$dumpvars/*(1, uut)*/;
 `endif
 `ifdef DECIMAL_TEST_6502
 		#33838000 $finish;
-  		$dumpfile("tb_soc_6502.lxt");
+  		$dumpfile("tb_soc_6502.fst");
 		$dumpvars/*(1, uut)*/;
 `endif
 `ifdef VERIFICATION_65C02
 		#3383800 $finish;
-  		$dumpfile("tb_soc_6502.lxt");
+  		$dumpfile("tb_soc_6502.fst");
 		$dumpvars/*(1, uut)*/;
 `endif
 `ifdef DECIMAL_TEST_65C02
 		#33838000 $finish;
-  		$dumpfile("tb_soc_6502.lxt");
+  		$dumpfile("tb_soc_6502.fst");
 		$dumpvars/*(1, uut)*/;
 `endif
 `ifdef VERIFICATION_65CE02
 		#3383800 $finish;
-  		$dumpfile("tb_soc_6502.lxt");
+  		$dumpfile("tb_soc_6502.fst");
 		$dumpvars/*(1, uut)*/;
 `endif
 `else       // stop after 1 sec

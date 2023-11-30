@@ -26,6 +26,7 @@ icarus/tb_soc_65C02_decimal_test
 icarus/tb_soc_65CE02_opcodes_test
 icarus/*.vcd
 icarus/*.lxt
+icarus/*.fst
 icarus/*.gtkw
 icarus/obj_dir
 icestorm/abc.history
@@ -40,4 +41,5 @@ icestorm/runs/
 icestorm/tb_hx8k_65xx_top
 icestorm/*.vcd
 icestorm/*.lxt
+icestorm/*.fst
 icestorm/*.gtkw

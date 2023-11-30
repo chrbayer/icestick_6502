@@ -39,12 +39,12 @@ VLOG = iverilog
 VERILATOR = verilator
 
 # targets
-all: $(TOP).lxt
+all: $(TOP).fst
 
-$(TOP).lxt: $(TOP)
+$(TOP).fst: $(TOP)
 	make -C ../$(PROG)
 	cp ../$(PROG)/rom.hex .
-	./$(TOP) -lxt2-space
+	./$(TOP) -fst
 
 $(TOP): tb_soc_65xx.v $(SOURCES)
 	$(VLOG) -D CPU_$(CPU) -D icarus -D SIM -o $(TOP) tb_soc_65xx.v $(SOURCES)
@@ -52,22 +52,22 @@ $(TOP): tb_soc_65xx.v $(SOURCES)
 tb_soc_6502_verification: tb_soc_65xx.v $(SOURCES)
 	make -j4 -C ../6502_65C02_functional_tests/tass64
 	$(VLOG) -D CPU_$(CPU) -D icarus -D SIM -D VERIFICATION -D VERIFICATION_6502 -o tb_soc_6502_verification tb_soc_65xx.v $(SOURCES)
-	./tb_soc_6502_verification -lxt2-space
+	./tb_soc_6502_verification -fst
 
 tb_soc_65C02_verification: tb_soc_65xx.v $(SOURCES)
 	make -j4 -C ../6502_65C02_functional_tests/tass64
 	$(VLOG) -D CPU_$(CPU) -D icarus -D SIM -D VERIFICATION -D VERIFICATION_65C02 -o tb_soc_65C02_verification tb_soc_65xx.v $(SOURCES)
-	./tb_soc_65C02_verification -lxt2-space
+	./tb_soc_65C02_verification -fst
 
 tb_soc_65C02_decimal_test: tb_soc_65xx.v $(SOURCES)
 	make -j4 -C ../6502_65C02_functional_tests/tass64
 	$(VLOG) -D CPU_$(CPU) -D icarus -D SIM -D VERIFICATION -D DECIMAL_TEST_65C02 -o tb_soc_65C02_decimal_test tb_soc_65xx.v $(SOURCES)
-	./tb_soc_65C02_decimal_test -lxt2-space
+	./tb_soc_65C02_decimal_test -fst
 
 tb_soc_65CE02_opcodes_test: tb_soc_65xx.v $(SOURCES)
 	make -j4 -C ../6502_65C02_functional_tests/tass64
 	$(VLOG) -D CPU_$(CPU) -D icarus -D SIM -D VERIFICATION -D VERIFICATION_65CE02 -o tb_soc_65CE02_opcodes_test tb_soc_65xx.v $(SOURCES)
-	./tb_soc_65CE02_opcodes_test -lxt2-space
+	./tb_soc_65CE02_opcodes_test -fst
 
 lint:
 	$(VERILATOR) --lint-only -DCPU_$(CPU) $(SOURCES)
@@ -99,4 +99,4 @@ endif
 clean:
 	rm -rf tb_soc_6502 tb_soc_65C02 tb_soc_65CE02 tb_soc_45GS02 \
 		   tb_soc_6502_verification tb_soc_65C02_verification tb_soc_65C02_decimal_test tb_soc_65CE02_opcodes_test \
-		   rom.hex *.vcd *.lxt obj_dir
+		   rom.hex *.vcd *.fst obj_dir
