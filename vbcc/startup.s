@@ -9,9 +9,10 @@
 	word start ; $fffc reset
 	word ___exit   ; $fffe irq / brk
 
+
 	section "text"
 
-	; --- system init code ---
+; --- system init code ---
 start:
 	ldx #$ff
 	txs
@@ -22,10 +23,10 @@ start:
 	lda #>__STACK
 	sta sp+1
 
-	lda #$00
-	tax
+; initialize zero page
+	ldx #$00
 .1:
-	sta $00,x
+	stz $00,x
 	inx
 	bne .1
 
