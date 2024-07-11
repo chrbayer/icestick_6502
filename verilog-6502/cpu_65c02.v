@@ -129,12 +129,6 @@ wire [7:0] S = AXYS[SEL_S];     // Stack pointer
 wire [7:0] P = { N, V, 2'b11, D, I, Z, C };
 
 /*
- * instruction decoder/sequencer
- */
-
-reg [5:0] state = RESET;
-
-/*
  * control signals
  */
 
@@ -266,6 +260,12 @@ localparam IND0   = 6'd52; // (ZP)    - fetch ZP address, and send to ALU (+0)
 localparam JMPIX0 = 6'd53; // JMP (,X)- fetch LSB and send to ALU (+X)
 localparam JMPIX1 = 6'd54; // JMP (,X)- fetch MSB and send to ALU (+Carry)
 localparam JMPIX2 = 6'd55; // JMP (,X)- Wait for ALU (only if needed)
+
+/*
+ * instruction decoder/sequencer
+ */
+
+reg [5:0] state = RESET;
 
 `ifdef SIM
 /*

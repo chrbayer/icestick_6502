@@ -95,12 +95,6 @@ wire [7:0] S = AXYS[SEL_S];     // Stack pointer
 wire [7:0] P = { N, V, 2'b11, D, I, Z, C };
 
 /*
- * instruction decoder/sequencer
- */
-
-reg [5:0] state = RESET;
-
-/*
  * control signals
  */
 
@@ -219,6 +213,12 @@ localparam WRITE  = 6'd47; // Write memory for read/modify/write
 localparam ZP0    = 6'd48; // Z-page  - fetch ZP address
 localparam ZPX0   = 6'd49; // ZP, X   - fetch ZP, and send to ALU (+X)
 localparam ZPX1   = 6'd50; // ZP, X   - load from memory
+
+/*
+ * instruction decoder/sequencer
+ */
+
+reg [5:0] state = RESET;
 
 `ifdef SIM
 /*

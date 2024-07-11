@@ -96,9 +96,6 @@ wire [7:0] PCL = PC[7:0];
 
 reg NMI_edge = 0;       // captured NMI edge
 
-reg [2:0] regsel;                       // Select A, X, Y or S register
-wire [7:0] regfile = regsel == SEL_SPL ? SPL : regsel == SEL_SPH ? SPH : AXYZB[regsel];    // Selected register output
-
 /* Default behavior is that of prior cpus */
 parameter
         ZEROPAGE  = 8'h00,
@@ -113,6 +110,9 @@ parameter
  localparam SEL_SPL = 3'd5;
  localparam SEL_SPH = 3'd6;
 
+reg [2:0] regsel;                       // Select A, X, Y or S register
+wire [7:0] regfile = regsel == SEL_SPL ? SPL : regsel == SEL_SPH ? SPH : AXYZB[regsel];    // Selected register output
+
 /*
  * define some signals for watching in simulator output
  */
@@ -126,12 +126,6 @@ wire [7:0]   B  = AXYZB[SEL_B];           // Base register
 `endif
 
 wire [7:0] P = { N, V, E, 1'b1, D, I, Z, C };
-
-/*
- * instruction decoder/sequencer
- */
-
-reg [5:0] state = RESET;
 
 /*
  * control signals
@@ -298,6 +292,12 @@ localparam READW0 = 6'd52; // Setup read MSB for read/modify/write 16 bit
 localparam READW1 = 6'd53; // Read MSB for read/modify/write 16 bit
 localparam WRITEW = 6'd54; // Write MSB for read/modify/write 16 bit
 
+/*
+ * instruction decoder/sequencer
+ */
+
+reg [5:0] state = RESET;
+
 `ifdef SIM
 /*
  * easy to read names in simulator output
@@ -423,6 +423,22 @@ always @*
         RTS2:           PC_inc = rti ? 0 : 1;
 
         default:        PC_inc = 0;
+    endcase
+
+
+/*
+ * register file, contains A, X, Y and S (stack pointer) registers. At each
+ * cycle only 1 of those registers needs to be accessed, so they combined
+ * in a small memory, saving resources.
+ */
+
+reg write_register;             // set when register file is written
+
+always @*
+    casez( state )
+        DECODE:         write_register = load_reg & ~plp;
+
+       default:         write_register = 0;
     endcase
 
 
@@ -669,22 +685,6 @@ always @*
         endcase
     else presync = 0;
 `endif
-
-
-/*
- * register file, contains A, X, Y and S (stack pointer) registers. At each
- * cycle only 1 of those registers needs to be accessed, so they combined
- * in a small memory, saving resources.
- */
-
-reg write_register;             // set when register file is written
-
-always @*
-    casez( state )
-        DECODE:         write_register = load_reg & ~plp;
-
-       default:         write_register = 0;
-    endcase
 
 
 /*

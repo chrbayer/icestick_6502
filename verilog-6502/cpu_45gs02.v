@@ -100,12 +100,10 @@ wire [7:0] PCH = PC[15:8];
 wire [7:0] PCL = PC[7:0];
 
 reg NMI_edge = 0;       // captured NMI edge
+reg mapping;            // mapping on-going (IRQ and NMI blocked), EOM to clear
 
 wire interrupt;
 assign interrupt = ((~I & ~IRQ_n) | NMI_edge) & ~mapping;
-
-reg [2:0] regsel;                       // Select A, X, Y or S register
-wire [7:0] regfile = regsel == SEL_SPL ? SPL : regsel == SEL_SPH ? SPH : AXYZB[regsel];    // Selected register output
 
 /* Default behavior is that of prior cpus */
 parameter
@@ -121,6 +119,9 @@ localparam SEL_B   = 3'd4;
 localparam SEL_SPL = 3'd5;
 localparam SEL_SPH = 3'd6;
 
+reg [2:0] regsel;                       // Select A, X, Y or S register
+wire [7:0] regfile = regsel == SEL_SPL ? SPL : regsel == SEL_SPH ? SPH : AXYZB[regsel];    // Selected register output
+
 /*
  * define some signals for watching in simulator output
  */
@@ -134,12 +135,6 @@ wire [7:0]   B  = AXYZB[SEL_B];           // Base register
 `endif
 
 wire [7:0] P = { N, V, E, 1'b1, D, I, Z, C };
-
-/*
- * instruction decoder/sequencer
- */
-
-reg [5:0] state = RESET;
 
 /*
  * control signals
@@ -190,7 +185,6 @@ reg [1:0] long_state;   // 32 bit indirect memory access detection state
 
 reg [15:0]lower_bank;   // lower bank configuration register
 reg [15:0]upper_bank;   // upper bank configuration register
-reg mapping;            // mapping on-going (IRQ and NMI blocked), EOM to clear
 wire [7:0]bank_mask;    // mask for which segments an offset needs to be applied
 assign bank_mask = { upper_bank[15:12], lower_bank[15:12] };
 
@@ -324,6 +318,12 @@ localparam READQ0 = 6'd57; // Setup read MSB for read/modify/write 16 bit or qua
 localparam READQ1 = 6'd58; // Read MSB for read/modify/write 16 bit or quad
 localparam WRITEQ = 6'd59; // Write MSB for read/modify/write 16 bit or quad
 localparam LONG   = 6'd60; // Generation of extra MSBs for direkt memory access > 16 bit
+
+/*
+ * instruction decoder/sequencer
+ */
+
+reg [5:0] state = RESET;
 
 `ifdef SIM
 /*
@@ -466,6 +466,28 @@ always @*
         RTS2:           PC_inc = rti ? 0 : 1;
 
         default:        PC_inc = 0;
+    endcase
+
+
+/*
+ * register file, contains A, X, Y and S (stack pointer) registers. At each
+ * cycle only 1 of those registers needs to be accessed, so they combined
+ * in a small memory, saving resources.
+ */
+
+reg write_register;             // set when register file is written
+
+always @*
+    casez( state )
+        DECODE:         write_register = load_reg & ~plp;
+
+        FETCH:          write_register = quad_state == QUADC ? load_reg : 0;
+
+        REG1:           write_register = load_reg;
+
+        READ1:          write_register = qr_counter == 2'd0 ? 0 : load_reg;
+
+       default:         write_register = 0;
     endcase
 
 
@@ -732,28 +754,6 @@ always @*
         endcase
     else presync = 0;
 `endif
-
-
-/*
- * register file, contains A, X, Y and S (stack pointer) registers. At each
- * cycle only 1 of those registers needs to be accessed, so they combined
- * in a small memory, saving resources.
- */
-
-reg write_register;             // set when register file is written
-
-always @*
-    casez( state )
-        DECODE:         write_register = load_reg & ~plp;
-
-        FETCH:          write_register = quad_state == QUADC ? load_reg : 0;
-
-        REG1:           write_register = load_reg;
-
-        READ1:          write_register = qr_counter == 2'd0 ? 0 : load_reg;
-
-       default:         write_register = 0;
-    endcase
 
 
 /*
