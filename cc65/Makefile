@@ -21,10 +21,10 @@ $(OBJ).hex: $(OBJ)
 	$(HEXDUMP) $(HEXDUMP_ARGS) $< > $@
 
 test_asm.o: test_asm.s
-	ca65 --cpu 4510 test_asm.s
+	ca65 --cpu 4510 -l test_asm.lst test_asm.s
 
 $(OBJ): $(SRC) test_asm.o
 	$(CL65) $(CLFLAGS) -o $(OBJ) $(SRC) $(LIB) test_asm.o
 
 clean:
-	-rm -f *.o $(OBJ) $(OBJ).hex $(OBJ).map
+	-rm -f *.o *.lst $(OBJ) $(OBJ).hex $(OBJ).map

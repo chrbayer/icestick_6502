@@ -21,8 +21,26 @@
         sta     longptr
         lda     #$00
         sta     longptr+1
-        sta     longptr+2
         sta     longptr+3
+        lda     #$08
+        sta     longptr+2
+        ;lda     #$55
+        ;sta     longptr
+        ;inc
+        ;sta     longptr+1
+        ;inc
+        ;sta     longptr+2
+        ;inc
+        ;sta     longptr+3
+        lda     #$FF
+        tax
+        tay
+        ldz     #$00
+        lda     (longptr),z
+        lda     #$FF
+        nop
+        lda     (longptr),z
+        lda     #$FF
         neg
         neg
         nop
@@ -214,11 +232,8 @@ value32: .dword $43272376
 
 .zeropage
 
-value16: .word $4327
+value16: .res 2
 
-indptr:  .word $0000
+indptr:  .res 2
 
-longptr: .byte $12
-         .byte $34
-         .byte $05
-         .byte $00
+longptr: .res 4

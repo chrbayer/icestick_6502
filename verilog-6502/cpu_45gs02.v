@@ -317,7 +317,7 @@ localparam REG1   = 6'd56; // First/second/third extra operation during quad reg
 localparam READQ0 = 6'd57; // Setup read MSB for read/modify/write 16 bit or quad
 localparam READQ1 = 6'd58; // Read MSB for read/modify/write 16 bit or quad
 localparam WRITEQ = 6'd59; // Write MSB for read/modify/write 16 bit or quad
-localparam LONG   = 6'd60; // Generation of extra MSBs for direkt memory access > 16 bit
+localparam LONG   = 6'd60; // Generation of extra MSBs for direct memory access > 16 bit
 
 /*
  * instruction decoder/sequencer
@@ -672,8 +672,9 @@ always @(posedge clk)
 
 always @(posedge clk)
     if( state == JSR0 || state == BRA0 ) ADH <= PCH;
+    else if( state == INDY2 ) ADH <= DIMUX;
 
-assign eAB = (state == INDY2 || state == READ1) && long_state == LONGC ? { DIMUX[3:0] + { 3'd0, CO }, AB } : { (bank_mask & (1 << AB[15:13])) != 8'd0 ? AB[15] ? upper_bank[11:0] : lower_bank[11:0] : 12'h000, 8'h0 } + { 4'h0, AB };
+assign eAB = (state == INDY2 || state == READ1) && long_state == LONGC ? { state == INDY2 ? DIMUX[3:0] : ADH[3:0], AB } : { (bank_mask & (1 << AB[15:13])) != 8'd0 ? AB[15] ? upper_bank[11:0] : lower_bank[11:0] : 12'h000, 8'h0 } + { 4'h0, AB };
 
 
 /*
@@ -932,7 +933,7 @@ always @*
             ABSX0,
             SPIND2:     AI = regfile;
 
-            INDY1:      AI = quad_state == QUADC ? 0 : regfile;
+            INDY1:      AI = quad_state == QUADC && !load_only ? 0 : regfile;
 
             READ,
             READW1,
@@ -1371,7 +1372,7 @@ always @(posedge clk)
         JMPI0:  state <= JMPI1;
         JMPI1:  state <= JMP0;
 
-        READ1:  state <= reg_counter < 2'd2 ? READ1 : FETCH;
+        READ1:  state <= qr_counter < 2'd2 ? READ1 : FETCH;
 
         RESET:  state <= BRK2;
 
